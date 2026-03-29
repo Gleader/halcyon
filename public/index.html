@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Halcyon — Real Estate Advisory</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --ink:#0c0d10;--ink-m:#5a5c66;--gold:#b8944a;--gold-l:#d4ae70;--gold-p:#f5edd8;
+  --cream:#faf8f4;--white:#fff;--bdr:rgba(184,148,74,.2);--bdrs:rgba(0,0,0,.08);
+  --serif:'Cormorant Garamond',Georgia,serif;--sans:'DM Sans',system-ui,sans-serif;
+  --archive-r:#c0392b;--calib-g:#1a7a5e;
+}
+html{font-size:15px}
+body{font-family:var(--sans);background:var(--cream);color:var(--ink);-webkit-font-smoothing:antialiased}
+nav{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.5rem;background:rgba(250,248,244,.97);border-bottom:1px solid var(--bdr)}
+.logo{font-family:var(--serif);font-size:1.15rem;font-weight:400;letter-spacing:.12em;text-transform:uppercase;text-decoration:none;color:var(--ink)}
+.logo span{color:var(--gold)}
+.nav-cta{background:var(--ink);color:var(--cream);border:none;padding:.45rem 1.1rem;font-family:var(--sans);font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
+.nav-cta:hover{background:var(--gold)}
+.hero{background:var(--ink);padding:3rem 1.5rem 2.5rem;position:relative;overflow:hidden}
+.hero-pat{position:absolute;inset:0;background-image:repeating-linear-gradient(0deg,transparent,transparent 59px,rgba(184,148,74,.06) 60px),repeating-linear-gradient(90deg,transparent,transparent 59px,rgba(184,148,74,.06) 60px)}
+.hero-body{position:relative;z-index:1}
+.eyebrow{font-size:.65rem;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);margin-bottom:1rem;display:flex;align-items:center;gap:.7rem}
+.eyebrow::before{content:'';display:block;width:22px;height:1px;background:var(--gold)}
+.hero h1{font-family:var(--serif);font-size:clamp(1.8rem,4vw,2.8rem);font-weight:300;line-height:1.1;color:var(--cream);margin-bottom:.8rem}
+.hero h1 em{color:var(--gold-l);font-style:italic}
+.hero p{font-size:.85rem;line-height:1.8;color:rgba(250,248,244,.5);font-weight:300;margin-bottom:1.5rem}
+.hero-stats{display:flex;gap:2rem;padding-top:1.5rem;border-top:1px solid rgba(184,148,74,.15)}
+.hstat-n{font-family:var(--serif);font-size:1.5rem;font-weight:300;color:var(--cream)}
+.hstat-l{font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;color:rgba(250,248,244,.3);margin-top:.15rem}
+.ticker{background:#080809;padding:1rem 1.5rem;display:flex;overflow-x:auto}
+.tick-lbl{font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;color:var(--gold);white-space:nowrap;margin-right:1.5rem;flex-shrink:0;align-self:center}
+.ti{flex:1;padding:0 1.2rem;border-left:1px solid rgba(184,148,74,.18);min-width:130px}
+.ti-loc{font-size:.6rem;text-transform:uppercase;color:rgba(250,248,244,.3);margin-bottom:.2rem}
+.ti-price{font-family:var(--serif);font-size:1.1rem;font-weight:300;color:var(--cream)}
+.ti-d{font-size:.6rem;color:var(--gold);margin-top:.1rem}
+.form-section{padding:2.5rem 1.5rem;background:var(--white)}
+.form-grid{display:grid;grid-template-columns:1fr 1.6fr;gap:2.5rem;max-width:980px}
+.form-intro p{font-size:.85rem;line-height:1.8;color:var(--ink-m);font-weight:300;margin-bottom:1rem}
+.form-intro .note{font-size:.76rem;color:var(--gold);line-height:1.7;border-left:2px solid var(--gold);padding-left:.9rem;margin-top:1rem}
+.sh{font-family:var(--serif);font-size:clamp(1.3rem,2vw,1.9rem);font-weight:300;line-height:1.2;margin-bottom:.7rem}
+.sh em{color:var(--gold);font-style:italic}
+.card{background:var(--cream);border:1px solid var(--bdrs);padding:1.6rem}
+.fsec{font-family:var(--serif);font-size:.95rem;color:var(--ink);margin:1.4rem 0 1rem;padding-bottom:.6rem;border-bottom:1px solid var(--bdr)}
+.fsec:first-child{margin-top:0}
+.frow{display:grid;grid-template-columns:1fr 1fr;gap:.7rem;margin-bottom:.7rem}
+.flab{display:block;font-size:.65rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-m);margin-bottom:.35rem}
+.flab-hint{font-size:.58rem;text-transform:none;color:var(--gold);opacity:.7;font-style:italic}
+input.fi,select.fi,textarea.fi{width:100%;background:var(--white);border:1px solid var(--bdrs);padding:.6rem .8rem;font-family:var(--sans);font-size:.85rem;color:var(--ink);outline:none;transition:border-color .2s;appearance:none;border-radius:0}
+input.fi:focus,select.fi:focus,textarea.fi:focus{border-color:var(--gold)}
+textarea.fi{resize:vertical;min-height:70px;line-height:1.6}
+.pt-row{display:flex;margin:.35rem 0 .7rem}
+.pt{flex:1;padding:.5rem .3rem;border:1px solid var(--bdrs);background:var(--white);text-align:center;font-size:.75rem;color:var(--ink-m);cursor:pointer;user-select:none;transition:all .15s;margin-right:-1px;position:relative}
+.pt:hover{border-color:var(--gold);color:var(--ink);z-index:1}
+.pt.on{background:var(--ink);border-color:var(--ink);color:var(--cream);z-index:2}
+.land-row{overflow:hidden;max-height:0;opacity:0;transition:max-height .35s ease,opacity .3s ease}
+.land-row.open{max-height:120px;opacity:1;margin-bottom:.7rem}
+.pri-grid{display:grid;grid-template-columns:1fr 1fr;gap:.4rem;margin:.35rem 0}
+.pc{display:flex;align-items:center;gap:.4rem;padding:.5rem .65rem;border:1px solid var(--bdrs);background:var(--white);cursor:pointer;font-size:.73rem;color:var(--ink-m);transition:all .15s;user-select:none}
+.pc:hover{border-color:var(--gold)}
+.pc.on{background:var(--gold-p);border-color:var(--gold);color:var(--ink)}
+.dot{width:5px;height:5px;border:1.5px solid currentColor;border-radius:50%;flex-shrink:0}
+.pc.on .dot{background:var(--gold);border-color:var(--gold)}
+.db-box{margin-top:1.2rem;border:1px solid rgba(184,148,74,.3);padding:1rem;background:#fdf9f2}
+.db-h{font-family:var(--serif);font-size:.9rem;margin-bottom:.2rem}
+.db-note{font-size:.72rem;color:var(--ink-m);margin-bottom:.8rem;line-height:1.6}
+.db-note strong{color:var(--gold)}
+.dbtags{display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.7rem}
+.dbt{padding:.28rem .65rem;background:var(--white);border:1px solid rgba(184,148,74,.25);font-size:.7rem;color:var(--ink-m);cursor:pointer;transition:all .15s;user-select:none}
+.dbt[data-db].on{border-color:var(--gold);color:var(--ink);background:var(--gold-p)}
+.dbt:not([data-db]).on{border-color:#c0392b;color:#c0392b;background:#fff5f4}
+.db-sub-row{margin-top:.7rem;padding-top:.7rem;border-top:1px solid rgba(184,148,74,.15)}
+.submit-btn{width:100%;background:var(--ink);color:var(--cream);border:none;padding:.85rem 2rem;font-family:var(--sans);font-size:.76rem;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;margin-top:1rem;transition:background .2s}
+.submit-btn:hover:not(:disabled){background:var(--gold)}
+.submit-btn:disabled{opacity:.5;cursor:not-allowed}
+/* PANEL */
+#panel{display:none;position:fixed;inset:0;z-index:300;background:rgba(8,8,9,.94);overflow-y:auto;padding:1.5rem}
+.panel-inner{max-width:820px;margin:0 auto}
+.panel-hd{display:flex;align-items:flex-start;justify-content:space-between;padding:1.2rem 0;border-bottom:1px solid rgba(184,148,74,.2);margin-bottom:1.2rem}
+.panel-title{font-family:var(--serif);font-size:1.45rem;font-weight:300;color:var(--cream)}
+.panel-sub{font-size:.65rem;letter-spacing:.16em;text-transform:uppercase;color:var(--gold);margin-bottom:.3rem}
+.close-btn{background:transparent;border:1px solid rgba(250,248,244,.15);color:rgba(250,248,244,.45);padding:.45rem 1rem;font-family:var(--sans);font-size:.7rem;cursor:pointer;flex-shrink:0}
+.close-btn:hover{border-color:var(--gold);color:var(--gold)}
+#loading{text-align:center;padding:2.5rem 0}
+.spin{display:inline-block;width:26px;height:26px;border:1.5px solid rgba(184,148,74,.3);border-top-color:var(--gold);border-radius:50%;animation:spin 1s linear infinite;margin-top:1.5rem}
+@keyframes spin{to{transform:rotate(360deg)}}
+.log-wrap{max-width:420px;margin:0 auto;text-align:left;margin-top:1.2rem}
+.log-line{display:flex;align-items:flex-start;gap:.6rem;padding:.35rem 0;border-bottom:1px solid rgba(184,148,74,.07);animation:fdin .3s ease}
+@keyframes fdin{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.log-dot{width:5px;height:5px;border-radius:50%;background:var(--gold);margin-top:5px;flex-shrink:0;opacity:.7}
+.log-txt{font-size:.77rem;color:rgba(250,248,244,.5);line-height:1.5}
+.log-txt strong{color:rgba(250,248,244,.8)}
+#results{display:none}
+/* CALIBRATION */
+.calib-panel{background:rgba(26,122,94,.07);border:1px solid rgba(26,122,94,.25);padding:1rem 1.2rem;margin-bottom:1.2rem}
+.calib-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:.7rem}
+.calib-title-txt{font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:#5dcaa5}
+.calib-subtitle{font-size:.65rem;color:rgba(250,248,244,.3);margin-top:.15rem}
+.calib-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:.6rem;margin-bottom:.8rem}
+.calib-stat-v{font-family:var(--serif);font-size:1.1rem;font-weight:300;color:var(--cream)}
+.calib-stat-l{font-size:.58rem;text-transform:uppercase;letter-spacing:.08em;color:rgba(250,248,244,.3);margin-top:.1rem}
+.calib-chips{display:flex;flex-wrap:wrap;gap:.35rem}
+.calib-chip{padding:.22rem .6rem;background:rgba(26,122,94,.12);border:1px solid rgba(26,122,94,.25);font-size:.65rem;color:#5dcaa5;display:flex;align-items:center;gap:.5rem}
+.calib-rm{cursor:pointer;opacity:.5;transition:opacity .15s}
+.calib-rm:hover{opacity:1;color:#f09595}
+/* BENCHMARK */
+.bm-box{background:rgba(184,148,74,.07);border:1px solid rgba(184,148,74,.2);padding:1.2rem 1.4rem;margin-bottom:1.2rem}
+.bm-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.8rem;margin-bottom:.7rem}
+.bm-val{font-family:var(--serif);font-size:1.35rem;font-weight:300;color:var(--cream)}
+.bm-lbl{font-size:.6rem;text-transform:uppercase;letter-spacing:.1em;color:rgba(250,248,244,.3);margin-bottom:.2rem}
+.bm-assess{font-size:.8rem;color:rgba(250,248,244,.5);line-height:1.7}
+.cards-lbl{font-size:.6rem;letter-spacing:.15em;text-transform:uppercase;color:rgba(250,248,244,.3);margin-bottom:.7rem}
+/* CARDS */
+.pcard{background:rgba(250,248,244,.03);border:1px solid rgba(250,248,244,.08);padding:1.1rem 1.2rem;margin-bottom:.7rem;transition:border-color .2s}
+.pcard:hover{border-color:rgba(184,148,74,.25)}
+.pcard.archived{border-color:rgba(192,57,43,.25);background:rgba(192,57,43,.03)}
+/* ARCHIVE BANNER */
+.archive-banner{display:flex;align-items:center;gap:.8rem;padding:.55rem .8rem;background:rgba(192,57,43,.09);border:1px solid rgba(192,57,43,.22);margin-bottom:.8rem;flex-wrap:wrap}
+.arch-badge{font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;color:var(--archive-r);font-weight:500;white-space:nowrap}
+.arch-note{font-size:.72rem;color:rgba(250,248,244,.38);flex:1;min-width:0}
+.arch-actions{display:flex;gap:.45rem;flex-shrink:0}
+.btn-calib{font-size:.65rem;letter-spacing:.05em;text-transform:uppercase;background:rgba(26,122,94,.13);color:#5dcaa5;border:1px solid rgba(26,122,94,.28);padding:.3rem .75rem;cursor:pointer;font-family:var(--sans);transition:all .15s;white-space:nowrap}
+.btn-calib:hover{background:rgba(26,122,94,.28)}
+.btn-calib:disabled{opacity:.5;cursor:default}
+.btn-dismiss{font-size:.65rem;letter-spacing:.05em;text-transform:uppercase;background:transparent;color:rgba(250,248,244,.22);border:1px solid rgba(250,248,244,.1);padding:.3rem .75rem;cursor:pointer;font-family:var(--sans)}
+.btn-dismiss:hover{color:rgba(250,248,244,.45);border-color:rgba(250,248,244,.2)}
+.pcard-hd{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.5rem}
+.pcard-name{font-family:var(--serif);font-size:1rem;color:var(--cream)}
+.pcard-loc{font-size:.68rem;color:rgba(250,248,244,.3);margin-top:.12rem}
+.pcard-price{font-family:var(--serif);font-size:1rem;color:var(--gold);text-align:right}
+.pcard-psm{font-size:.65rem;color:rgba(250,248,244,.3);margin-top:.12rem;text-align:right}
+.pcard-meta{display:flex;flex-wrap:wrap;gap:.8rem;font-size:.7rem;color:rgba(250,248,244,.35);margin-bottom:.55rem}
+.pcard-hi{font-size:.78rem;color:rgba(250,248,244,.52);line-height:1.7}
+.pcard-cav{margin-top:.4rem;font-size:.72rem;color:rgba(226,75,74,.65)}
+.pcard-foot{display:flex;align-items:center;gap:.7rem;margin-top:.6rem;padding-top:.6rem;border-top:1px solid rgba(255,255,255,.05);flex-wrap:wrap}
+.badge{padding:.16rem .5rem;font-size:.62rem;text-transform:uppercase}
+.b-fair{background:rgba(99,153,34,.15);color:#97c459;border:1px solid rgba(99,153,34,.3)}
+.b-above{background:rgba(186,117,23,.15);color:#ef9f27;border:1px solid rgba(186,117,23,.3)}
+.b-below{background:rgba(30,158,117,.15);color:#5dcaa5;border:1px solid rgba(30,158,117,.3)}
+.pcard-link{font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gold);text-decoration:none}
+.pcard-link:hover{text-decoration:underline}
+.inspect-btn{font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;background:rgba(184,148,74,.12);color:var(--gold);border:1px solid rgba(184,148,74,.3);padding:.3rem .8rem;cursor:pointer;font-family:var(--sans);transition:all .15s;margin-left:auto}
+.inspect-btn:hover{background:rgba(184,148,74,.25)}
+.inspect-btn:disabled{opacity:.4;cursor:not-allowed}
+/* INSPECT PANEL */
+#inspectPanel{display:none;position:fixed;inset:0;z-index:400;background:rgba(4,4,6,.96);overflow-y:auto;padding:1.5rem}
+.inspect-inner{max-width:760px;margin:0 auto}
+.inspect-hd{display:flex;align-items:flex-start;justify-content:space-between;padding:1.2rem 0;border-bottom:1px solid rgba(184,148,74,.2);margin-bottom:1.5rem}
+.inspect-title{font-family:var(--serif);font-size:1.3rem;font-weight:300;color:var(--cream)}
+.inspect-sub{font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;color:var(--gold);margin-bottom:.3rem}
+/* ARCHIVED INSPECT */
+.arch-inspect{background:rgba(192,57,43,.07);border:1px solid rgba(192,57,43,.22);padding:1.5rem;text-align:center;margin-bottom:1.2rem}
+.arch-inspect-icon{font-size:1.8rem;margin-bottom:.7rem}
+.arch-inspect-title{font-family:var(--serif);font-size:1.1rem;color:var(--archive-r);margin-bottom:.5rem}
+.arch-inspect-note{font-size:.8rem;color:rgba(250,248,244,.4);line-height:1.8;margin-bottom:1.2rem}
+.arch-inspect-note strong{color:#5dcaa5}
+.btn-add-calib{background:rgba(26,122,94,.15);color:#5dcaa5;border:1px solid rgba(26,122,94,.3);padding:.55rem 1.4rem;cursor:pointer;font-family:var(--sans);font-size:.73rem;letter-spacing:.07em;text-transform:uppercase;transition:all .2s}
+.btn-add-calib:hover{background:rgba(26,122,94,.3)}
+.btn-add-calib:disabled{opacity:.5;cursor:default}
+/* ACTIVE INSPECT */
+.cl-head{font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;color:var(--gold);margin-bottom:.7rem;padding-bottom:.4rem;border-bottom:1px solid rgba(184,148,74,.15)}
+.cl-item{display:flex;align-items:flex-start;gap:.8rem;padding:.5rem 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.cl-item:last-child{border-bottom:none}
+.cl-icon{font-size:.9rem;flex-shrink:0;margin-top:.05rem;width:18px;text-align:center}
+.cl-lbl{font-size:.78rem;color:rgba(250,248,244,.7);line-height:1.5;flex:1}
+.cl-lbl strong{color:var(--cream)}
+.cl-score{font-size:.72rem;padding:.15rem .5rem;border-radius:2px;flex-shrink:0}
+.sg{background:rgba(99,153,34,.15);color:#97c459;border:1px solid rgba(99,153,34,.3)}
+.sw{background:rgba(186,117,23,.15);color:#ef9f27;border:1px solid rgba(186,117,23,.3)}
+.sb{background:rgba(226,75,74,.15);color:#f09595;border:1px solid rgba(226,75,74,.3)}
+.sn{background:rgba(90,92,102,.15);color:rgba(250,248,244,.35);border:1px solid rgba(90,92,102,.3)}
+.ms-bar-wrap{display:flex;align-items:center;gap:1rem;padding:1.2rem 1.4rem;background:rgba(184,148,74,.07);border:1px solid rgba(184,148,74,.2);margin-bottom:1.5rem}
+.ms-lbl{font-size:.62rem;text-transform:uppercase;letter-spacing:.14em;color:var(--gold);flex-shrink:0}
+.ms-track{flex:1;height:4px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden}
+.ms-fill{height:100%;border-radius:2px;transition:width .6s ease}
+.ms-num{font-family:var(--serif);font-size:1.2rem;font-weight:300;color:var(--cream);flex-shrink:0}
+.ms-vd{font-size:.72rem;color:rgba(250,248,244,.45);flex-shrink:0}
+.photo-box{background:rgba(250,248,244,.03);border:1px solid rgba(250,248,244,.07);padding:1rem 1.2rem;margin-bottom:1.2rem}
+.photo-hd{font-size:.62rem;text-transform:uppercase;letter-spacing:.14em;color:rgba(250,248,244,.4);margin-bottom:.8rem}
+.photo-tip{display:flex;gap:.7rem;font-size:.77rem;color:rgba(250,248,244,.5);line-height:1.5;margin-bottom:.6rem}
+.photo-tip:last-child{margin-bottom:0}
+.photo-tip-ico{color:var(--gold);flex-shrink:0}
+.notes-box{margin-top:1.2rem;padding:1.1rem 1.2rem;border-left:2px solid var(--gold);background:rgba(12,13,16,.4)}
+.notes-lbl{font-size:.6rem;letter-spacing:.13em;text-transform:uppercase;color:var(--gold);margin-bottom:.5rem}
+.notes-txt{font-size:.8rem;color:rgba(250,248,244,.6);line-height:1.8}
+details{margin-top:1.2rem}
+summary{font-size:.65rem;text-transform:uppercase;letter-spacing:.1em;color:rgba(250,248,244,.2);cursor:pointer;padding:.35rem 0}
+pre{margin-top:.7rem;padding:.8rem;background:rgba(0,0,0,.4);color:rgba(250,248,244,.35);font-size:.65rem;line-height:1.6;overflow-x:auto;white-space:pre-wrap}
+footer{background:#080809;padding:1.5rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem}
+.flogo{font-family:var(--serif);font-size:.95rem;letter-spacing:.13em;text-transform:uppercase;color:rgba(250,248,244,.22)}
+.flogo span{color:var(--gold);opacity:.6}
+.fnote{font-size:.65rem;color:rgba(250,248,244,.16)}
+@media(max-width:680px){.form-grid{grid-template-columns:1fr;gap:1.5rem}.frow{grid-template-columns:1fr}.bm-grid{grid-template-columns:1fr 1fr}.calib-grid{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+
+<nav>
+  <a class="logo" href="#">Hal<span>cyon</span></a>
+  <button class="nav-cta" onclick="document.querySelector('.form-section').scrollIntoView({behavior:'smooth'})">Start your search</button>
+</nav>
+
+<section class="hero">
+  <div class="hero-pat"></div>
+  <div class="hero-body">
+    <div class="eyebrow">Private real estate advisory</div>
+    <h1>Your next <em>exceptional</em><br>property deserves more</h1>
+    <p>Live market search benchmarked against RCN notarial data — with automatic archive detection and market calibration built in.</p>
+    <div class="hero-stats">
+      <div><div class="hstat-n">98%</div><div class="hstat-l">Client satisfaction</div></div>
+      <div><div class="hstat-n">340+</div><div class="hstat-l">Premium transactions</div></div>
+      <div><div class="hstat-n">12+</div><div class="hstat-l">Years in market</div></div>
+    </div>
+  </div>
+</section>
+
+<div class="ticker">
+  <div class="tick-lbl">RCN benchmark</div>
+  <div style="display:flex;gap:0;flex:1">
+    <div class="ti"><div class="ti-loc">Śródmieście</div><div class="ti-price">18 400 <span style="font-size:.6rem;opacity:.4">PLN/m²</span></div><div class="ti-d">▲ 3.2% YoY</div></div>
+    <div class="ti"><div class="ti-loc">Wawer/Radość</div><div class="ti-price">15 085 <span style="font-size:.6rem;opacity:.4">PLN/m²</span></div><div class="ti-d">▲ 2.1% YoY</div></div>
+    <div class="ti"><div class="ti-loc">Konstancin</div><div class="ti-price">14 200 <span style="font-size:.6rem;opacity:.4">PLN/m²</span></div><div class="ti-d">▲ 1.8% YoY</div></div>
+    <div class="ti"><div class="ti-loc">Łomianki</div><div class="ti-price">9 318 <span style="font-size:.6rem;opacity:.4">PLN/m²</span></div><div class="ti-d">▲ 2.4% YoY</div></div>
+    <div class="ti"><div class="ti-loc">Piaseczno</div><div class="ti-price">11 200 <span style="font-size:.6rem;opacity:.4">PLN/m²</span></div><div class="ti-d">▲ 1.6% YoY</div></div>
+  </div>
+</div>
+
+<section class="form-section">
+  <div class="form-grid">
+    <div class="form-intro">
+      <div class="eyebrow" style="margin-bottom:.9rem">Client briefing</div>
+      <h2 class="sh">Tell us about<br>your <em>vision</em></h2>
+      <p>We search for active listings only. When an archived listing is discovered — rather than silently discarding it — we surface it clearly and let you add its price data to your <strong>market calibration dataset</strong>, helping sharpen the benchmark.</p>
+      <p class="note">The "Deal breakers" section is the <strong>only place</strong> where budget or area becomes a hard ceiling. Everywhere else we search ±30% flexibly.</p>
+    </div>
+
+    <div class="card">
+      <div class="fsec">Core parameters</div>
+
+      <div style="margin-bottom:.7rem">
+        <label class="flab">City / District <span class="flab-hint">— starting point</span></label>
+        <div style="display:grid;grid-template-columns:1fr auto;gap:.4rem">
+          <input id="fLoc" class="fi" type="text" placeholder="e.g. Warsaw, Radość, Wawer"/>
+          <div style="min-width:155px;display:flex;flex-direction:column;gap:.3rem">
+            <select id="fRadius" class="fi" onchange="updateRadiusNote()" style="border-left:2px solid var(--gold)">
+              <option value="0">Exact location only</option>
+              <option value="5">+ up to 5 km</option>
+              <option value="10">+ up to 10 km</option>
+              <option value="20" selected>+ up to 20 km</option>
+              <option value="50">+ up to 50 km</option>
+            </select>
+            <div id="radiusNote" style="font-size:.62rem;color:var(--gold);opacity:.7;line-height:1.4"></div>
+          </div>
+        </div>
+        <div id="lockLocRow" style="display:none;margin-top:.4rem">
+          <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;user-select:none">
+            <input type="checkbox" id="fLockLoc" onchange="updateRadiusNote()" style="accent-color:var(--gold)"/>
+            <span class="flab" style="margin:0">Lock to this district only (deal breaker)</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="frow">
+        <div>
+          <label class="flab">Property type</label>
+          <div class="pt-row">
+            <div class="pt" data-t="apartment" onclick="setPT(this)">Apartment</div>
+            <div class="pt" data-t="house" onclick="setPT(this)">House</div>
+            <div class="pt on" data-t="both" onclick="setPT(this)">Both</div>
+          </div>
+          <select id="fSub" class="fi"></select>
+        </div>
+        <div>
+          <label class="flab">Rooms</label>
+          <select id="fRooms" class="fi"><option>2+</option><option>3+</option><option>4+</option><option>5+</option><option>No preference</option></select>
+          <label class="flab" style="margin-top:.6rem">Purpose</label>
+          <select id="fPurpose" class="fi"><option>Second property</option><option>Investment / rental</option><option>Primary residence</option><option>Holiday retreat</option></select>
+        </div>
+      </div>
+
+      <div style="margin-bottom:.7rem">
+        <label class="flab">Floor area (m²) <span class="flab-hint">— ±30% unless locked</span></label>
+        <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:.4rem;align-items:center">
+          <input id="fAreaMin" class="fi" type="number" placeholder="Min e.g. 120" min="0" value="120"/>
+          <span style="font-size:.8rem;color:var(--ink-m);text-align:center">—</span>
+          <input id="fAreaMax" class="fi" type="number" placeholder="Max e.g. 500" min="0" value="500"/>
+        </div>
+      </div>
+
+      <div style="margin-bottom:.7rem">
+        <label class="flab">Budget (PLN) <span class="flab-hint">— indicative unless locked</span></label>
+        <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:.4rem;align-items:center">
+          <input id="fBudgetMin" class="fi" type="number" placeholder="From" min="0"/>
+          <span style="font-size:.8rem;color:var(--ink-m);text-align:center">—</span>
+          <input id="fBudgetMax" class="fi" type="number" placeholder="Up to" min="0" value="4000000"/>
+        </div>
+      </div>
+
+      <div class="frow land-row open" id="landRow">
+        <div style="grid-column:1/-1">
+          <label class="flab">Land area (m²) <span class="flab-hint">— ±30% unless locked</span></label>
+          <div style="display:grid;grid-template-columns:1fr auto 1fr auto;gap:.4rem;align-items:center">
+            <input id="fLandMin" class="fi" type="number" placeholder="Min" min="0" value="800"/>
+            <span style="font-size:.8rem;color:var(--ink-m);text-align:center">—</span>
+            <input id="fLandMax" class="fi" type="number" placeholder="Max" min="0"/>
+            <select id="fPlot" class="fi" style="min-width:110px"><option>Any plot</option><option>Enclosed</option><option>Garden</option><option>Forest edge</option><option>Waterfront</option></select>
+          </div>
+        </div>
+      </div>
+
+      <div class="fsec">Priorities</div>
+      <label class="flab">What matters most?</label>
+      <div class="pri-grid">
+        <div class="pc" onclick="this.classList.toggle('on')"><span class="dot"></span>View / exposure</div>
+        <div class="pc" onclick="this.classList.toggle('on')"><span class="dot"></span>Prestigious location</div>
+        <div class="pc on" onclick="this.classList.toggle('on')"><span class="dot"></span>Quiet & privacy</div>
+        <div class="pc" onclick="this.classList.toggle('on')"><span class="dot"></span>High-end finish</div>
+        <div class="pc" onclick="this.classList.toggle('on')"><span class="dot"></span>Amenities nearby</div>
+        <div class="pc" onclick="this.classList.toggle('on')"><span class="dot"></span>Investment potential</div>
+        <div class="pc" onclick="this.classList.toggle('on')"><span class="dot"></span>Terrace / garden</div>
+        <div class="pc" onclick="this.classList.toggle('on')"><span class="dot"></span>Exceptional architecture</div>
+      </div>
+
+      <div style="margin-top:.7rem">
+        <label class="flab">Additional notes</label>
+        <textarea id="fNotes" class="fi" placeholder="Lifestyle, what you've loved or disliked in past properties… e.g. garage in building required, no street parking, ready to move in or willing to renovate if total under 4M PLN">Garage in building required (deal breaker). Ready to move in OR willing to renovate if total purchase + renovation stays under 4 000 000 PLN. Priority: quiet surroundings.</textarea>
+      </div>
+
+      <div class="db-box">
+        <div class="db-h">Deal breakers — hard limits</div>
+        <p class="db-note">Lock anything here and we will <strong>not exceed it</strong>. Everything else is flexible ±30%.</p>
+        <div class="dbtags">
+          <div class="dbt" data-db="budget" onclick="toggleDb(this)">Lock budget max</div>
+          <div class="dbt on" data-db="area" onclick="toggleDb(this)">Lock area range</div>
+          <div class="dbt" data-db="land" onclick="toggleDb(this)">Lock land area</div>
+          <div class="dbt" onclick="this.classList.toggle('on')">Ground floor</div>
+          <div class="dbt" onclick="this.classList.toggle('on')">No elevator</div>
+          <div class="dbt" onclick="this.classList.toggle('on')">No parking</div>
+          <div class="dbt" onclick="this.classList.toggle('on')">Busy road</div>
+          <div class="dbt" onclick="this.classList.toggle('on')">Renovation needed</div>
+        </div>
+        <div id="dbAreaRow" class="db-sub-row">
+          <label class="flab">Hard area limits (m²)</label>
+          <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:.4rem;align-items:center">
+            <input id="fDbAreaMin" class="fi" type="number" placeholder="Hard min" min="0" value="120"/>
+            <span style="font-size:.8rem;color:var(--ink-m);text-align:center">—</span>
+            <input id="fDbAreaMax" class="fi" type="number" placeholder="Hard max" min="0" value="500"/>
+          </div>
+        </div>
+        <div id="dbBudgetRow" class="db-sub-row" style="display:none">
+          <label class="flab">Hard budget ceiling (PLN)</label>
+          <input id="fDbBudget" class="fi" type="number" placeholder="e.g. 4 000 000" min="0"/>
+        </div>
+        <div id="dbLandRow" class="db-sub-row" style="display:none">
+          <label class="flab">Hard land limits (m²)</label>
+          <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:.4rem;align-items:center">
+            <input id="fDbLandMin" class="fi" type="number" placeholder="Hard min" min="0"/>
+            <span style="font-size:.8rem;color:var(--ink-m);text-align:center">—</span>
+            <input id="fDbLandMax" class="fi" type="number" placeholder="Hard max" min="0"/>
+          </div>
+        </div>
+        <div style="margin-top:.7rem">
+          <label class="flab">Other hard exclusions</label>
+          <input id="fDbOther" class="fi" type="text" placeholder="e.g. below floor 3, no south exposure…"/>
+        </div>
+      </div>
+      <button class="submit-btn" id="submitBtn" onclick="runSearch(event)">Search & benchmark →</button>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="flogo">Hal<span>cyon</span></div>
+  <div class="fnote">Private real estate advisory · Warsaw</div>
+  <div class="fnote">RCN data: GUGiK / geoportal.gov.pl</div>
+</footer>
+
+<!-- RESULTS PANEL -->
+<div id="panel">
+  <div class="panel-inner">
+    <div class="panel-hd">
+      <div><div class="panel-sub" id="panelSub">Searching…</div><div class="panel-title" id="panelTitle">Live market search</div></div>
+      <button class="close-btn" onclick="closePanel()">Close ×</button>
+    </div>
+    <div id="loading"><div class="log-wrap" id="logWrap"></div><div class="spin"></div></div>
+    <div id="results">
+      <div id="calibPanel" style="display:none" class="calib-panel">
+        <div class="calib-hd">
+          <div>
+            <div class="calib-title-txt">Market calibration dataset</div>
+            <div class="calib-subtitle">Prices extracted from archived listings — historical reference for benchmarking</div>
+          </div>
+          <span id="calibCount" style="font-size:.65rem;color:#5dcaa5"></span>
+        </div>
+        <div class="calib-grid">
+          <div><div class="calib-stat-l">Avg PLN/m²</div><div class="calib-stat-v" id="calibAvg">—</div></div>
+          <div><div class="calib-stat-l">Min PLN/m²</div><div class="calib-stat-v" id="calibMin">—</div></div>
+          <div><div class="calib-stat-l">Max PLN/m²</div><div class="calib-stat-v" id="calibMax">—</div></div>
+          <div><div class="calib-stat-l">Data points</div><div class="calib-stat-v" id="calibN">0</div></div>
+        </div>
+        <div class="calib-chips" id="calibChips"></div>
+        <div style="font-size:.67rem;color:rgba(250,248,244,.22);margin-top:.6rem;line-height:1.6">These are historical asking prices — actual transaction prices (RCN) are typically 10–15% lower. Use as directional calibration only.</div>
+      </div>
+      <div class="bm-box" id="bmBox"></div>
+      <div class="cards-lbl">Results — <strong style="color:var(--gold)">Inspect →</strong> for full material analysis · archived listings offer calibration data rather than a viewing</div>
+      <div id="cardList"></div>
+      <div id="notesBox" style="display:none" class="notes-box"></div>
+      <details><summary>Raw JSON (debug)</summary><pre id="rawOut"></pre></details>
+    </div>
+  </div>
+</div>
+
+<!-- INSPECT PANEL -->
+<div id="inspectPanel">
+  <div class="inspect-inner">
+    <div class="inspect-hd">
+      <div><div class="inspect-sub" id="inspectSub">Sub-agent analysis</div><div class="inspect-title" id="inspectTitle">Listing inspection</div></div>
+      <button class="close-btn" onclick="closeInspect()">← Back</button>
+    </div>
+    <div id="inspectLoading" style="text-align:center;padding:3rem 0">
+      <div style="font-size:.75rem;color:rgba(250,248,244,.4);margin-bottom:1.5rem">Sub-agent checking availability and analysing listing…</div>
+      <div class="log-wrap" id="inspectLogWrap"></div>
+      <div class="spin"></div>
+    </div>
+    <div id="inspectContent" style="display:none"></div>
+  </div>
+</div>
+
+<script>
+/* ─── calibration store ─── */
+const calibData = [];
+let _inspectProp = null, _inspectResult = null;
+
+function addCalib(property, d) {
+  const psm = d?.listing_details?.price_sqm || property.price_sqm;
+  if (!psm) { alert('No PLN/m² data found — cannot add to calibration.'); return null; }
+  const pt = {
+    name: property.name, location: property.location||property.address||'',
+    price_sqm: psm, price_total: d?.listing_details?.price_total||property.price_total,
+    area_sqm: d?.listing_details?.area_sqm||property.area_sqm,
+    year_built: d?.listing_details?.year_built||property.year_built,
+    condition: d?.listing_details?.condition||property.condition,
+    url: property.url, ts: Date.now()
+  };
+  calibData.push(pt);
+  renderCalibPanel();
+  return pt;
+}
+
+function removeCalib(i) { calibData.splice(i,1); renderCalibPanel(); }
+
+function renderCalibPanel() {
+  const p = document.getElementById('calibPanel');
+  if (!calibData.length) { p.style.display='none'; return; }
+  p.style.display='block';
+  const prices = calibData.map(x=>x.price_sqm).filter(Boolean);
+  const avg = Math.round(prices.reduce((a,b)=>a+b,0)/prices.length);
+  document.getElementById('calibCount').textContent = calibData.length+' point'+(calibData.length>1?'s':'');
+  document.getElementById('calibN').textContent = calibData.length;
+  document.getElementById('calibAvg').textContent = avg.toLocaleString('pl-PL');
+  document.getElementById('calibMin').textContent = Math.min(...prices).toLocaleString('pl-PL');
+  document.getElementById('calibMax').textContent = Math.max(...prices).toLocaleString('pl-PL');
+  document.getElementById('calibChips').innerHTML = calibData.map((x,i)=>`
+    <div class="calib-chip">
+      <span>${x.name||x.location} · ${x.price_sqm.toLocaleString('pl-PL')} PLN/m² · ${x.condition||''} ${x.year_built?'('+x.year_built+')':''}</span>
+      <span class="calib-rm" onclick="removeCalib(${i})" title="Remove">✕</span>
+    </div>`).join('');
+}
+
+/* ─── form helpers ─── */
+const subtypes = {
+  apartment:[['','— Subtype —'],['apartment','Apartment'],['penthouse','Penthouse'],['loft','Loft'],['studio','Studio'],['other','Other']],
+  house:[['','— Subtype —'],['villa','Villa / Manor'],['townhouse','Townhouse'],['detached','Detached house'],['historical','Historical'],['other','Other']],
+  both:[['','— Subtype —'],['apartment','Apartment'],['penthouse','Penthouse'],['villa','Villa / Manor'],['townhouse','Townhouse'],['detached','Detached house'],['other','Other']],
+};
+function setPT(el){document.querySelectorAll('.pt').forEach(c=>c.classList.remove('on'));el.classList.add('on');const t=el.dataset.t;document.getElementById('landRow').classList.toggle('open',t==='house'||t==='both');document.getElementById('fSub').innerHTML=subtypes[t].map(([v,l])=>`<option value="${v}">${l}</option>`).join('');}
+setPT(document.querySelector('.pt.on'));
+
+function updateRadiusNote(){
+  const r=parseInt(document.getElementById('fRadius').value||'0');
+  const locked=document.getElementById('fLockLoc').checked;
+  const note=document.getElementById('radiusNote');
+  const lockRow=document.getElementById('lockLocRow');
+  if(r>0){lockRow.style.display='block';note.textContent=locked?'Location locked — exact area only.':'Searching up to '+r+' km around primary location.';}
+  else{lockRow.style.display='none';note.textContent='';}
+}
+updateRadiusNote();
+
+function toggleDb(el){
+  el.classList.toggle('on');
+  const map={budget:'dbBudgetRow',area:'dbAreaRow',land:'dbLandRow'};
+  const row=map[el.dataset.db];
+  if(row)document.getElementById(row).style.display=el.classList.contains('on')?'block':'none';
+}
+
+function log(html,wrap='logWrap'){const d=document.createElement('div');d.className='log-line';d.innerHTML=`<div class="log-dot"></div><div class="log-txt">${html}</div>`;document.getElementById(wrap).appendChild(d);d.scrollIntoView({behavior:'smooth',block:'nearest'});}
+function num(id){const v=parseFloat(document.getElementById(id)?.value);return isNaN(v)?null:v;}
+function val(id){return document.getElementById(id)?.value?.trim()||'';}
+function isLocked(db){return document.querySelector(`.dbt[data-db="${db}"]`)?.classList.contains('on');}
+function rangeStr(a,b,u=''){if(a&&b)return`${a}–${b}${u}`;if(a)return`min ${a}${u}`;if(b)return`max ${b}${u}`;return'not specified';}
+function flex(a,b,p=.3){return{lo:a?Math.round(a*(1-p)):null,hi:b?Math.round(b*(1+p)):null};}
+
+function brief(){
+  const pType=document.querySelector('.pt.on').dataset.t;
+  const pris=[...document.querySelectorAll('.pc.on')].map(e=>e.textContent.trim());
+  const dbs=[...document.querySelectorAll('.dbt.on')].map(e=>e.dataset.db||e.textContent.trim());
+  return{location:val('fLoc'),radius:parseInt(document.getElementById('fRadius').value||'0'),
+    lockLocation:document.getElementById('fLockLoc').checked,propertyType:pType,
+    subtype:val('fSub'),areaMin:num('fAreaMin'),areaMax:num('fAreaMax'),
+    landMin:num('fLandMin'),landMax:num('fLandMax'),plot:val('fPlot'),rooms:val('fRooms'),
+    budgetMin:num('fBudgetMin'),budgetMax:num('fBudgetMax'),purpose:val('fPurpose'),
+    priorities:pris,notes:val('fNotes'),dealBreakers:dbs,dealBreakerOther:val('fDbOther'),
+    hardBudget:num('fDbBudget'),hardAreaMin:num('fDbAreaMin'),hardAreaMax:num('fDbAreaMax'),
+    hardLandMin:num('fDbLandMin'),hardLandMax:num('fDbLandMax')};
+}
+
+function buildMainPrompt(b){
+  const lockBudget=isLocked('budget')&&b.hardBudget;
+  const lockArea=isLocked('area')&&(b.hardAreaMin||b.hardAreaMax);
+  const lockLand=isLocked('land')&&(b.hardLandMin||b.hardLandMax);
+  const F=.30;
+  const locScope=b.lockLocation?`EXACT: "${b.location}" only.`:b.radius>0?`PRIMARY: "${b.location}". Also search surrounding areas within ~${b.radius} km.`:`"${b.location}" — adjacent districts fine.`;
+  const bw=lockBudget?{lo:b.hardBudget*.5,hi:b.hardBudget}:flex(b.budgetMin,b.budgetMax,F);
+  const aw=lockArea?{lo:b.hardAreaMin,hi:b.hardAreaMax}:flex(b.areaMin,b.areaMax,F);
+  const lw=lockLand?{lo:b.hardLandMin,hi:b.hardLandMax}:flex(b.landMin,b.landMax,F);
+  const otherDbs=[...b.dealBreakers.filter(d=>!['budget','area','land'].includes(d)),b.dealBreakerOther].filter(Boolean);
+  return `You are a senior premium real estate advisor in Poland.
+
+CLIENT BRIEF:
+- Location: ${locScope}
+- Type: ${b.propertyType}${b.subtype?' ('+b.subtype+')':''}
+- Floor area: ${rangeStr(b.areaMin,b.areaMax,' m²')} (preferred)
+- Rooms: ${b.rooms}
+${(b.propertyType==='house'||b.propertyType==='both')?`- Land area: ${rangeStr(b.landMin,b.landMax,' m²')}${b.plot&&b.plot!=='Any plot'?' · '+b.plot:''}`:''} 
+- Budget: ${rangeStr(b.budgetMin,b.budgetMax,' PLN')} (preferred)
+- Purpose: ${b.purpose}
+- Priorities: ${b.priorities.join(', ')||'none'}
+- Notes: ${b.notes||'none'}
+
+FLEXIBLE RULES:
+${lockBudget?`BUDGET LOCKED: max ${b.hardBudget.toLocaleString()} PLN.`:`BUDGET FLEXIBLE: search up to ${bw.hi?bw.hi.toLocaleString()+' PLN':'no limit'} (+${Math.round(F*100)}% above max).`}
+${lockArea?`AREA LOCKED: ${rangeStr(b.hardAreaMin,b.hardAreaMax,' m²')}.`:`AREA FLEXIBLE: search ${rangeStr(aw.lo,aw.hi,' m²')} (±${Math.round(F*100)}%).`}
+${(b.propertyType==='house'||b.propertyType==='both')?lockLand?`LAND LOCKED: ${rangeStr(b.hardLandMin,b.hardLandMax,' m²')}.`:`LAND FLEXIBLE: search ${rangeStr(lw.lo,lw.hi,' m²')} (±${Math.round(F*100)}%).`:''}
+HARD EXCLUSIONS: ${otherDbs.join(', ')||'none'}
+
+LISTING STATUS RULE — CRITICAL:
+You MUST check whether each listing is active or archived before including it. Look for:
+- Polish indicators: "ogłoszenie archiwalne", "nieaktualne", "oferta zakończona", "archiwalne"
+- URL patterns: if a portal search page (not an individual listing /oferta/ URL) is returned, that listing may not exist
+- Prefer listings updated in 2025 or 2026
+For EACH listing set listing_status: "active", "archived", or "unknown"
+- Do NOT omit archived listings — include them with status "archived" so price data can be used for market calibration
+- For active listings: find the DIRECT individual listing URL (e.g. otodom.pl/pl/oferta/... or nieruchomosci-online.pl/dom.../12345.html)
+
+TASKS:
+1. Search otodom.pl, nieruchomosci-online.pl, gratka.pl, morizon.pl with the search windows above
+2. Check listing_status for each result carefully
+3. Search RCN benchmarks: "ceny nieruchomości ${b.location} 2025 2026 transakcje notarialne"
+4. Return 3–5 listings with clear status labelling
+
+Return ONLY raw JSON:
+{"benchmark":{"district":"string","avg_price_sqm":number,"min_price_sqm":number,"max_price_sqm":number,"source":"string","assessment":"string"},"search_windows":{"location_scope":"string","budget_searched":"string","area_searched":"string","land_searched":"string|null"},"properties":[{"name":"string","address":"string","location":"string","distance_from_primary":"string|null","price_total":number,"price_sqm":number,"area_sqm":number,"land_sqm":number|null,"rooms":number|null,"floor":"string|null","year_built":number|null,"condition":"ready"|"renovate"|"developer"|"unknown","url":"string","portal":"string","listing_status":"active"|"archived"|"unknown","archive_note":"string|null","match_score":number,"within_preferences":{"budget":boolean,"area":boolean,"land":boolean|null,"location":boolean},"rcn_vs_market":"fair"|"above"|"below","highlights":["string"],"caveats":["string"]}],"market_notes":"string","search_queries_used":["string"]}`;
+}
+
+function buildInspectPrompt(p){
+  return `You are a senior real estate analyst specialising in Polish residential property.
+
+LISTING TO INSPECT:
+- Name/address: ${p.name} — ${p.address||p.location}
+- Portal: ${p.portal}
+- URL: ${p.url}
+- Known data: ${p.area_sqm}m², plot ${p.land_sqm||'n/a'}m², built ${p.year_built||'unknown'}, ${(p.price_total||0).toLocaleString('pl-PL')} PLN, condition: ${p.condition}
+- Status flag from search: ${p.listing_status||'unknown'}
+
+STEP 1 — VERIFY LISTING STATUS:
+Search for this listing URL and check if it shows: "ogłoszenie archiwalne", "nieaktualne", 404, or redirect to a list page.
+Set archived:true if any of these are found. Set archived:false if the listing appears active.
+
+STEP 2 — IF ARCHIVED:
+- Still extract whatever price/area/year data you can find
+- Provide archive_note explaining what you found
+- Set a realistic price_sqm if you found the original listing price
+- Skip the full checklist — just provide advisor_verdict explaining its calibration value
+
+STEP 3 — IF ACTIVE:
+- Search for the specific listing, extract all material and structural data
+- Search RCN transaction data for this street/area
+- Complete the full 10-item material checklist
+
+PHOTO REVIEW CHECKLIST (active listings only):
+- EXTERIOR WALLS: Material? (brick/silicate/ytong). Age indicators?
+- ROOF: Type? (flag asbestos risk for pre-1990 builds with unknown roof)
+- WINDOWS: Old wooden=BAD, PVC=WARN, aluminium=GOOD
+- INSULATION: Mentioned? Year of upgrade?
+- HEATING: Gas central=OK, heat pump=GOOD, coal=BAD
+- GARAGE: In-building=GOOD, separate=WARN, none=BAD
+- ELECTRICAL: Pre-1990 = likely full rewire needed
+- PLUMBING: Municipal=GOOD, septic=WARN, own well=WARN
+- STRUCTURAL: Settlement, damp, structural issues?
+- PLOT: Shape, orientation, fencing, access?
+
+Return ONLY raw JSON:
+{"archived":boolean,"archive_note":"string|null","listing_details":{"full_address":"string","description_summary":"string","price_total":number|null,"price_sqm":number|null,"area_sqm":number|null,"land_sqm":number|null,"rooms":number|null,"floors":number|null,"year_built":number|null,"condition":"string","heating":"string","garage":"string","utilities":"string"},"rcn_comparison":{"area_avg_sqm":number|null,"area_min_sqm":number|null,"area_max_sqm":number|null,"verdict":"fair"|"above"|"below"|"unknown","notes":"string"},"material_score":number,"checklist":{"exterior_walls":{"score":"GOOD"|"WARN"|"BAD"|"UNKNOWN","detail":"string"},"roof":{"score":"GOOD"|"WARN"|"BAD"|"UNKNOWN","detail":"string"},"windows":{"score":"GOOD"|"WARN"|"BAD"|"UNKNOWN","detail":"string"},"insulation":{"score":"GOOD"|"WARN"|"BAD"|"UNKNOWN","detail":"string"},"heating":{"score":"GOOD"|"WARN"|"BAD"|"UNKNOWN","detail":"string"},"garage":{"score":"GOOD"|"WARN"|"BAD"|"UNKNOWN","detail":"string"},"electrical":{"score":"GOOD"|"WARN"|"BAD"|"UNKNOWN","detail":"string"},"plumbing":{"score":"GOOD"|"WARN"|"BAD"|"UNKNOWN","detail":"string"},"structural":{"score":"GOOD"|"WARN"|"BAD"|"UNKNOWN","detail":"string"},"plot":{"score":"GOOD"|"WARN"|"BAD"|"UNKNOWN","detail":"string"}},"photo_tips":["string"],"renovation_estimate":{"low_pln":number|null,"high_pln":number|null,"notes":"string"},"total_cost_estimate":{"low_pln":number|null,"high_pln":number|null},"advisor_verdict":"string","search_queries_used":["string"]}`;
+}
+
+/* ─── API loop ─── */
+async function agentLoop(prompt,logWrap='logWrap'){
+  const msgs=[{role:'user',content:prompt}];
+  const tools=[{type:'web_search_20250305',name:'web_search'}];
+  let i=0;
+  while(i++<14){
+    log(`API call ${i}…`,logWrap);
+    const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:4000,tools,messages:msgs})});
+    if(!res.ok){const e=await res.text();throw new Error(`${res.status}: ${e}`);}
+    const data=await res.json();
+    msgs.push({role:'assistant',content:data.content});
+    const tus=data.content.filter(b=>b.type==='tool_use');
+    const txts=data.content.filter(b=>b.type==='text');
+    if(tus.length){tus.forEach(tu=>{if(tu.name==='web_search')log(`Searching: <strong>"${tu.input?.query||'…'}"</strong>`,logWrap);});msgs.push({role:'user',content:tus.map(tu=>({type:'tool_result',tool_use_id:tu.id,content:'(executed)'}))});continue;}
+    if(data.stop_reason==='end_turn'&&txts.length){log('Parsing…',logWrap);return txts.map(b=>b.text).join('');}
+    break;
+  }
+  throw new Error('No response');
+}
+
+function parseJSON(raw){let t=raw.trim();const f=t.match(/```(?:json)?\s*([\s\S]*?)```/);if(f)t=f[1].trim();return JSON.parse(t);}
+
+/* ─── render results ─── */
+let lastResults=null;
+function fmt(n){return n?Number(n).toLocaleString('pl-PL')+' PLN':'—';}
+function fmtSqm(n){return n?Number(n).toLocaleString('pl-PL')+' PLN/m²':'—';}
+
+function render(d){
+  lastResults=d;
+  document.getElementById('loading').style.display='none';
+  document.getElementById('results').style.display='block';
+  document.getElementById('panelSub').textContent='Search complete';
+  document.getElementById('panelTitle').textContent='Your property brief results';
+  const bm=d.benchmark||{};const sw=d.search_windows||{};
+  document.getElementById('bmBox').innerHTML=`
+    <div style="font-size:.6rem;letter-spacing:.15em;text-transform:uppercase;color:var(--gold);margin-bottom:.9rem">RCN benchmark — ${bm.district||''}</div>
+    <div class="bm-grid">
+      <div><div class="bm-lbl">Avg PLN/m²</div><div class="bm-val">${(bm.avg_price_sqm||0).toLocaleString('pl-PL')}</div></div>
+      <div><div class="bm-lbl">Range</div><div style="font-size:.85rem;color:rgba(250,248,244,.65);margin-top:.25rem">${(bm.min_price_sqm||0).toLocaleString('pl-PL')} — ${(bm.max_price_sqm||0).toLocaleString('pl-PL')}</div></div>
+      <div><div class="bm-lbl">Source</div><div style="font-size:.75rem;color:rgba(250,248,244,.4);margin-top:.25rem">${bm.source||'RCN/GUGiK'}</div></div>
+    </div>
+    <div class="bm-assess">${bm.assessment||''}</div>
+    ${sw.budget_searched?`<div style="margin-top:.8rem;padding-top:.7rem;border-top:1px solid rgba(184,148,74,.15);font-size:.68rem;color:rgba(250,248,244,.25)">${[sw.location_scope&&'Loc: '+sw.location_scope,sw.budget_searched&&'Budget: '+sw.budget_searched,sw.area_searched&&'Area: '+sw.area_searched,sw.land_searched&&'Land: '+sw.land_searched].filter(Boolean).join(' · ')}</div>`:''}`;
+
+  const cl=document.getElementById('cardList');cl.innerHTML='';
+  (d.properties||[]).forEach((p,idx)=>{
+    const archived=p.listing_status==='archived';
+    const bc=p.rcn_vs_market==='above'?'b-above':p.rcn_vs_market==='below'?'b-below':'b-fair';
+    const bl=p.rcn_vs_market==='above'?'Above market':p.rcn_vs_market==='below'?'Below market':'Fair value';
+    const sc=Math.min(5,Math.round((p.match_score||5)/2));
+    const el=document.createElement('div');el.className='pcard'+(archived?' archived':'');el.id='pc'+idx;
+    el.innerHTML=`
+      ${archived?`<div class="archive-banner">
+        <span class="arch-badge">⚠ Archived</span>
+        <span class="arch-note">${p.archive_note||'Listing no longer active — price data available for calibration'}</span>
+        <div class="arch-actions">
+          <button class="btn-calib" id="qcb${idx}" onclick="quickCalib(${idx})">Add to calibration</button>
+          <button class="btn-dismiss" onclick="document.getElementById('pc${idx}').style.display='none'">Dismiss</button>
+        </div>
+      </div>`:''}
+      <div class="pcard-hd">
+        <div><div class="pcard-name">${p.name||'Listing'}</div><div class="pcard-loc">${p.location||''}${p.distance_from_primary?' · <span style="color:var(--gold);font-size:.65rem">'+p.distance_from_primary+'</span>':''}</div></div>
+        <div><div class="pcard-price" style="${archived?'opacity:.45;text-decoration:line-through':''}">${fmt(p.price_total)}</div><div class="pcard-psm">${fmtSqm(p.price_sqm)}</div></div>
+      </div>
+      <div class="pcard-meta" style="${archived?'opacity:.45':''}">
+        ${p.area_sqm?`<span>${p.area_sqm}m²</span>`:''}${p.land_sqm?`<span>Plot ${p.land_sqm}m²</span>`:''}${p.rooms?`<span>${p.rooms} rooms</span>`:''}${p.year_built?`<span>Built ${p.year_built}</span>`:''}
+        ${p.condition?`<span style="color:${p.condition==='renovate'?'#ef9f27':p.condition==='ready'?'#97c459':'rgba(250,248,244,.35)'}">${p.condition==='renovate'?'🔧 To renovate':p.condition==='ready'?'✓ Move-in ready':p.condition}</span>`:''}
+        ${p.portal?`<span style="color:rgba(250,248,244,.2)">${p.portal}</span>`:''}
+        ${!archived?`<span style="color:var(--gold)">${'★'.repeat(sc)+'☆'.repeat(5-sc)}</span>`:''}
+      </div>
+      ${!archived&&p.highlights?.length?`<div class="pcard-hi">${p.highlights.map(h=>`• ${h}`).join('<br>')}</div>`:''}
+      ${!archived&&p.caveats?.length?`<div class="pcard-cav">${p.caveats.map(c=>`⚠ ${c}`).join(' · ')}</div>`:''}
+      <div class="pcard-foot">
+        ${!archived?`<span class="badge ${bc}">${bl}</span>`:''}
+        ${p.url?`<a class="pcard-link" href="${p.url}" target="_blank">${archived?'View archived →':'Open listing →'}</a>`:''}
+        <button class="${archived?'btn-calib':'inspect-btn'}" onclick="${archived?'runInspect('+idx+')':'runInspect('+idx+')'}" style="${archived?'':'margin-left:auto'}">${archived?'Full inspection →':'Inspect →'}</button>
+      </div>`;
+    cl.appendChild(el);
+  });
+
+  const mn=d.market_notes;const nb=document.getElementById('notesBox');
+  if(mn){nb.style.display='block';nb.innerHTML=`<div class="notes-lbl">Advisor notes</div><div class="notes-txt">${mn}</div>`;}
+  document.getElementById('rawOut').textContent=JSON.stringify(d,null,2);
+}
+
+/* ─── quick calibration from card (no full inspect) ─── */
+async function quickCalib(idx){
+  const p=lastResults?.properties?.[idx];if(!p)return;
+  const btn=document.getElementById('qcb'+idx);if(btn){btn.disabled=true;btn.textContent='Adding…';}
+  // Try to get a price_sqm from the card data directly
+  if(p.price_sqm){
+    addCalib(p,null);
+    if(btn){btn.textContent='✓ Added';btn.style.background='rgba(26,122,94,.3)';}
+  } else {
+    // Run sub-agent briefly
+    try{const raw=await agentLoop(buildInspectPrompt(p),'logWrap');const d=parseJSON(raw);addCalib(p,d);if(btn){btn.textContent='✓ Added';btn.style.background='rgba(26,122,94,.3)';}}
+    catch(e){if(btn){btn.textContent='Failed';btn.disabled=false;}}
+  }
+}
+
+/* ─── inspect sub-agent ─── */
+async function runInspect(idx){
+  const p=lastResults?.properties?.[idx];if(!p)return;
+  _inspectProp=p;_inspectResult=null;
+  document.getElementById('inspectPanel').style.display='block';
+  document.getElementById('inspectLoading').style.display='block';
+  document.getElementById('inspectContent').style.display='none';
+  document.getElementById('inspectLogWrap').innerHTML='';
+  document.getElementById('inspectSub').textContent='Sub-agent — checking availability & analysing';
+  document.getElementById('inspectTitle').textContent=p.name||'Listing inspection';
+  try{
+    const raw=await agentLoop(buildInspectPrompt(p),'inspectLogWrap');
+    const d=parseJSON(raw);_inspectResult=d;renderInspect(p,d);
+  }catch(err){
+    document.getElementById('inspectLoading').style.display='none';
+    document.getElementById('inspectContent').style.display='block';
+    document.getElementById('inspectContent').innerHTML=`<div style="color:rgba(226,75,74,.8);font-size:.85rem;padding:2rem 0">Error: ${err.message}</div>`;
+  }
+}
+
+const clLabels={exterior_walls:'Exterior walls',roof:'Roof',windows:'Windows',insulation:'Insulation / thermal',heating:'Heating system',garage:'Garage',electrical:'Electrical installation',plumbing:'Plumbing & water',structural:'Structural condition',plot:'Plot & access'};
+function sClass(s){return s==='GOOD'?'sg':s==='WARN'?'sw':s==='BAD'?'sb':'sn';}
+function sIcon(s){return s==='GOOD'?'✓':s==='WARN'?'⚠':s==='BAD'?'✗':'?';}
+function sColor(s){return s==='GOOD'?'#5dcaa5':s==='WARN'?'#ef9f27':s==='BAD'?'#f09595':'rgba(250,248,244,.25)';}
+
+function addInspectToCalib(){
+  if(!_inspectProp)return;
+  addCalib(_inspectProp,_inspectResult);
+  const btn=document.getElementById('inspAddCalibBtn');
+  if(btn){btn.disabled=true;btn.textContent='✓ Added to calibration dataset';}
+}
+
+function renderInspect(property,d){
+  document.getElementById('inspectLoading').style.display='none';
+  document.getElementById('inspectContent').style.display='block';
+  const ld=d.listing_details||{};const rcn=d.rcn_comparison||{};const cl=d.checklist||{};
+  const score=Math.round(d.material_score||50);
+  const fc=score>=70?'#5dcaa5':score>=45?'#ef9f27':'#f09595';
+  const vd=score>=70?'Good condition':score>=45?'Average — review needed':'Poor — significant work required';
+  const rcnBc=rcn.verdict==='above'?'b-above':rcn.verdict==='below'?'b-below':'b-fair';
+  const rcnBl=rcn.verdict==='above'?'Above market':rcn.verdict==='below'?'Below market':rcn.verdict==='unknown'?'Benchmark unknown':'Fair value';
+
+  let html='';
+
+  // ── ARCHIVED ──
+  if(d.archived){
+    html+=`<div class="arch-inspect">
+      <div class="arch-inspect-icon">📁</div>
+      <div class="arch-inspect-title">Listing no longer available</div>
+      <div class="arch-inspect-note">${d.archive_note||'This listing has been removed from the portal. The property may have sold or been withdrawn.'}<br><br>
+        The price data is still valuable — it helps calibrate your <strong>market benchmark</strong> by showing what comparable properties were asking.
+      </div>
+      <button class="btn-add-calib" id="inspAddCalibBtn" onclick="addInspectToCalib()">
+        Add ${ld.price_sqm?(ld.price_sqm.toLocaleString('pl-PL')+' PLN/m²'):property.price_sqm?(property.price_sqm.toLocaleString('pl-PL')+' PLN/m²'):'price data'} to calibration dataset
+      </button>
+    </div>`;
+    if(ld.price_total||ld.price_sqm){
+      html+=`<div style="background:rgba(250,248,244,.03);border:1px solid rgba(250,248,244,.06);padding:1.1rem 1.2rem;margin-bottom:1.2rem">
+        <div style="font-size:.6rem;text-transform:uppercase;letter-spacing:.14em;color:rgba(250,248,244,.3);margin-bottom:.7rem">Extracted historical data</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.8rem">
+          <div><div class="bm-lbl">Price</div><div style="font-family:var(--serif);font-size:1rem;color:rgba(250,248,244,.5)">${ld.price_total?ld.price_total.toLocaleString('pl-PL')+' PLN':'—'}</div></div>
+          <div><div class="bm-lbl">PLN/m²</div><div style="font-size:.9rem;color:rgba(250,248,244,.45);margin-top:.25rem">${ld.price_sqm?ld.price_sqm.toLocaleString('pl-PL'):'—'}</div></div>
+          <div><div class="bm-lbl">Area · Year</div><div style="font-size:.9rem;color:rgba(250,248,244,.45);margin-top:.25rem">${ld.area_sqm||'—'}m² · ${ld.year_built||'—'}</div></div>
+        </div>
+        <div style="font-size:.72rem;color:rgba(250,248,244,.28);margin-top:.7rem">${ld.description_summary||''}</div>
+      </div>`;
+    }
+    if(d.advisor_verdict)html+=`<div class="notes-box"><div class="notes-lbl">Advisor note</div><div class="notes-txt">${d.advisor_verdict}</div></div>`;
+    html+=`<details><summary>Raw sub-agent JSON</summary><pre>${JSON.stringify(d,null,2)}</pre></details>`;
+    document.getElementById('inspectContent').innerHTML=html;
+    return;
+  }
+
+  // ── ACTIVE ──
+  html+=`<div style="background:rgba(184,148,74,.07);border:1px solid rgba(184,148,74,.2);padding:1.2rem 1.4rem;margin-bottom:1.2rem">
+    <div style="font-size:.6rem;text-transform:uppercase;letter-spacing:.14em;color:var(--gold);margin-bottom:.8rem">Listing details — confirmed active</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.8rem;margin-bottom:.8rem">
+      <div><div class="bm-lbl">Price</div><div class="bm-val" style="font-size:1.1rem">${ld.price_total?ld.price_total.toLocaleString('pl-PL')+' PLN':'—'}</div></div>
+      <div><div class="bm-lbl">Area</div><div style="font-size:.9rem;color:rgba(250,248,244,.65);margin-top:.25rem">${ld.area_sqm||'—'} m²</div></div>
+      <div><div class="bm-lbl">Built</div><div style="font-size:.9rem;color:rgba(250,248,244,.65);margin-top:.25rem">${ld.year_built||'—'}</div></div>
+    </div>
+    <div style="font-size:.8rem;color:rgba(250,248,244,.5);line-height:1.7">${ld.description_summary||''}</div>
+    <div style="margin-top:.8rem;display:flex;align-items:center;gap:.7rem">
+      <span class="badge ${rcnBc}">${rcnBl}</span>
+      <span style="font-size:.72rem;color:rgba(250,248,244,.3)">${rcn.area_avg_sqm?'RCN avg: '+rcn.area_avg_sqm.toLocaleString('pl-PL')+' PLN/m²':''} ${rcn.notes?'· '+rcn.notes:''}</span>
+    </div>
+  </div>
+  <div class="ms-bar-wrap">
+    <span class="ms-lbl">Material score</span>
+    <div class="ms-track"><div class="ms-fill" style="width:${score}%;background:${fc}"></div></div>
+    <span class="ms-num" style="color:${fc}">${score}/100</span>
+    <span class="ms-vd">${vd}</span>
+  </div>
+  <div class="cl-head">Structural & material checklist</div>`;
+
+  Object.entries(clLabels).forEach(([key,lbl])=>{
+    const item=cl[key]||{score:'UNKNOWN',detail:'No data found'};
+    html+=`<div class="cl-item">
+      <div class="cl-icon" style="color:${sColor(item.score)}">${sIcon(item.score)}</div>
+      <div class="cl-lbl"><strong>${lbl}</strong><br>${item.detail||'—'}</div>
+      <span class="cl-score ${sClass(item.score)}">${item.score}</span>
+    </div>`;
+  });
+
+  if(d.photo_tips?.length){
+    html+=`<div class="photo-box" style="margin-top:1.2rem"><div class="photo-hd">📷 What to look for in listing photos</div>`;
+    d.photo_tips.forEach(tip=>{html+=`<div class="photo-tip"><span class="photo-tip-ico">→</span><span>${tip}</span></div>`;});
+    html+=`</div>`;
+  }
+
+  if(d.renovation_estimate?.low_pln||d.total_cost_estimate?.low_pln){
+    html+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin-bottom:1.2rem">`;
+    if(d.renovation_estimate?.low_pln)html+=`<div style="background:rgba(250,248,244,.03);border:1px solid rgba(250,248,244,.07);padding:1rem 1.2rem"><div class="bm-lbl" style="margin-bottom:.4rem">Renovation estimate</div><div style="font-family:var(--serif);font-size:1rem;color:var(--gold)">${d.renovation_estimate.low_pln.toLocaleString('pl-PL')} — ${d.renovation_estimate.high_pln?.toLocaleString('pl-PL')||'?'} PLN</div><div style="font-size:.72rem;color:rgba(250,248,244,.35);margin-top:.3rem">${d.renovation_estimate.notes||''}</div></div>`;
+    if(d.total_cost_estimate?.low_pln)html+=`<div style="background:rgba(184,148,74,.07);border:1px solid rgba(184,148,74,.2);padding:1rem 1.2rem"><div class="bm-lbl" style="margin-bottom:.4rem">Total cost estimate</div><div style="font-family:var(--serif);font-size:1rem;color:var(--cream)">${d.total_cost_estimate.low_pln.toLocaleString('pl-PL')} — ${d.total_cost_estimate.high_pln?.toLocaleString('pl-PL')||'?'} PLN</div><div style="font-size:.72rem;color:rgba(250,248,244,.35);margin-top:.3rem">purchase + renovation</div></div>`;
+    html+=`</div>`;
+  }
+
+  if(d.advisor_verdict)html+=`<div class="notes-box"><div class="notes-lbl">Advisor verdict</div><div class="notes-txt">${d.advisor_verdict}</div></div>`;
+
+  if(property.url)html+=`<div style="margin-top:1.2rem;padding:1rem;background:rgba(250,248,244,.03);border:1px solid rgba(250,248,244,.06);display:flex;align-items:center;justify-content:space-between"><div style="font-size:.72rem;color:rgba(250,248,244,.3)">Open original listing to view photos</div><a href="${property.url}" target="_blank" class="pcard-link">Open listing → ${property.portal||''}</a></div>`;
+
+  html+=`<details><summary>Raw sub-agent JSON</summary><pre>${JSON.stringify(d,null,2)}</pre></details>`;
+  document.getElementById('inspectContent').innerHTML=html;
+}
+
+function closeInspect(){document.getElementById('inspectPanel').style.display='none';}
+function closePanel(){document.getElementById('panel').style.display='none';const btn=document.getElementById('submitBtn');btn.disabled=false;btn.textContent='Search & benchmark →';}
+
+/* ─── main search ─── */
+async function runSearch(e){
+  e.preventDefault();
+  const btn=document.getElementById('submitBtn');btn.disabled=true;btn.textContent='Searching…';
+  document.getElementById('panel').style.display='block';
+  document.getElementById('loading').style.display='block';
+  document.getElementById('results').style.display='none';
+  document.getElementById('logWrap').innerHTML='';
+  document.getElementById('panelSub').textContent='Searching…';
+  document.getElementById('panelTitle').textContent='Live market search';
+  const b=brief();
+  log(`<strong>${b.propertyType}</strong> · <strong>${b.location||'location not set'}</strong>${b.radius>0?' + '+b.radius+'km radius':''}`);
+  log(`Budget: ${isLocked('budget')&&b.hardBudget?'<strong>LOCKED</strong>':'±30% flexible'} · Area: ${isLocked('area')?'<strong>LOCKED</strong>':'±30% flexible'}`);
+  log('Searching — active listings only, archiving flagged separately…');
+  try{
+    const raw=await agentLoop(buildMainPrompt(b));
+    render(parseJSON(raw));
+  }catch(err){
+    document.getElementById('loading').style.display='none';
+    document.getElementById('results').style.display='block';
+    document.getElementById('panelSub').textContent='Error';
+    document.getElementById('bmBox').innerHTML=`<div style="color:rgba(226,75,74,.8);font-size:.82rem">${err.message}</div>`;
+    document.getElementById('cardList').innerHTML='';
+    document.getElementById('notesBox').style.display='none';
+    document.getElementById('rawOut').textContent=err.message;
+    btn.disabled=false;btn.textContent='Search & benchmark →';
+  }
+}
+</script>
+</body>
+</html>

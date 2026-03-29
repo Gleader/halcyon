@@ -1,0 +1,9 @@
+{
+  "name": "halcyon-real-estate",
+  "version": "1.0.0",
+  "description": "Halcyon — Premium Real Estate Advisory",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  }
+}
