@@ -705,21 +705,23 @@ Return ONLY raw JSON matching this compact schema:
  *   - Checkpoint between every portal
  *   - No single connection chain exceeds ~30s
  */
+/* ── Cost mode: set DEBUG_CHEAP=true to minimize API spend while testing ── */
+const DEBUG_CHEAP = true;
 const MODEL_SEARCH = 'claude-haiku-4-5-20251001';   // $1/$5 per MTok
-const MODEL_SYNTH  = 'claude-sonnet-4-20250514';     // $3/$15 per MTok
+const MODEL_SYNTH  = DEBUG_CHEAP ? 'claude-haiku-4-5-20251001' : 'claude-sonnet-4-20250514';
 const MAX_ITERS_PER_PORTAL = 4;
 const KEEP_FULL_RESULTS = 2;
 
 /* Portals searched in Phase 1 (listing collection) */
 const PORTALS = [
-  { id:'otodom',   name:'Otodom.pl',   site:'otodom.pl',   type:'portal', tier:'major', maxIters:5, note:'Largest Polish portal — deep search' },
-  { id:'olx',      name:'OLX.pl',      site:'olx.pl/nieruchomosci', type:'portal', tier:'major', maxIters:5, note:'Major classifieds — broad coverage' },
-  { id:'gratka',   name:'Gratka.pl',   site:'gratka.pl',   type:'portal', tier:'major', maxIters:5, note:'Wide coverage — many unique listings' },
-  { id:'morizon',  name:'Morizon.pl',  site:'morizon.pl',  type:'portal', tier:'major', maxIters:4, note:'Aggregator — cross-portal results' },
-  { id:'nol',      name:'Nieruchomości-online.pl', site:'nieruchomosci-online.pl', type:'portal', tier:'major', maxIters:4, note:'Detail-rich listings' },
-  { id:'domiporta',name:'Domiporta.pl', site:'domiporta.pl', type:'portal', tier:'minor', maxIters:3, note:'Secondary portal' },
-  { id:'tabela',   name:'TabelaOfert.pl', site:'tabelaofert.pl', type:'portal', tier:'minor', maxIters:3, note:'Developer listings' },
-  { id:'agencies', name:'Premium Agencies', site:null, type:'agencies', tier:'major', maxIters:5,
+  { id:'otodom',   name:'Otodom.pl',   site:'otodom.pl',   type:'portal', tier:'major', maxIters:DEBUG_CHEAP?2:5, note:'Largest Polish portal — deep search' },
+  { id:'olx',      name:'OLX.pl',      site:'olx.pl/nieruchomosci', type:'portal', tier:'major', maxIters:DEBUG_CHEAP?2:5, note:'Major classifieds — broad coverage' },
+  { id:'gratka',   name:'Gratka.pl',   site:'gratka.pl',   type:'portal', tier:'major', maxIters:DEBUG_CHEAP?1:5, note:'Wide coverage — many unique listings' },
+  { id:'morizon',  name:'Morizon.pl',  site:'morizon.pl',  type:'portal', tier:'major', maxIters:DEBUG_CHEAP?1:4, note:'Aggregator — cross-portal results' },
+  { id:'nol',      name:'Nieruchomości-online.pl', site:'nieruchomosci-online.pl', type:'portal', tier:'major', maxIters:DEBUG_CHEAP?1:4, note:'Detail-rich listings' },
+  { id:'domiporta',name:'Domiporta.pl', site:'domiporta.pl', type:'portal', tier:'minor', maxIters:DEBUG_CHEAP?1:3, note:'Secondary portal' },
+  { id:'tabela',   name:'TabelaOfert.pl', site:'tabelaofert.pl', type:'portal', tier:'minor', maxIters:DEBUG_CHEAP?1:3, note:'Developer listings' },
+  { id:'agencies', name:'Premium Agencies', site:null, type:'agencies', tier:'major', maxIters:DEBUG_CHEAP?2:5,
     note:'MetroHouse, Freedom, Homfi, Strzelczyk, RE/MAX, Hamilton May, Lions Estate, Partners Intl, Vilea, NuxEstate, Prestige RE',
     sites:['metrohouse.pl','freedom-nieruchomosci.pl','homfi.com','strzelczyk.pl','remax.pl','hamiltonmay.com','lionsestate.pl','partnersinternational.pl','vilea.pl','nuxestate.pl','prestige-real-estate.pl']
   }
@@ -747,35 +749,65 @@ function trimOldSearchResults(msgs){
 }
 
 /* Returns a promise that resolves when user clicks the continue button */
-function waitForPortal(logWrap, portalName, portalNote, listingsFound, searchTime, portalIdx, totalPortals){
+/* Ask user whether to search a portal BEFORE running it */
+function askPortal(logWrap, portal, portalIdx, totalPortals, totalListingsSoFar){
   return new Promise(resolve=>{
-    const id='cont_'+Date.now();
+    const id='ask_'+Date.now();
     const wrap=document.getElementById(logWrap);
     const row=document.createElement('div');
-    row.style.cssText='padding:.8rem 0;border-top:1px solid rgba(184,148,74,.1);margin-top:.5rem';
-    const pct=Math.round(((portalIdx+1)/totalPortals)*100);
+    row.style.cssText='padding:.7rem 0;border-top:1px solid rgba(184,148,74,.1);margin-top:.4rem';
+    const pct=Math.round((portalIdx/totalPortals)*100);
+    const icon=portal.type==='agencies'?'🏢':'🔍';
     row.innerHTML=`
-      <div style="display:flex;align-items:center;gap:.8rem;margin-bottom:.6rem">
+      <div style="display:flex;align-items:center;gap:.8rem;margin-bottom:.5rem">
         <div style="flex:1;height:3px;background:rgba(250,248,244,.06);border-radius:2px;overflow:hidden">
           <div style="width:${pct}%;height:100%;background:var(--gold);border-radius:2px;transition:width .4s"></div>
         </div>
-        <span style="font-size:.62rem;color:rgba(250,248,244,.25);flex-shrink:0">${portalIdx+1}/${totalPortals}</span>
+        <span style="font-size:.62rem;color:rgba(250,248,244,.25);flex-shrink:0">${portalIdx}/${totalPortals} · ${totalListingsSoFar} found</span>
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem">
         <div>
-          <div style="font-size:.78rem;color:var(--cream);font-weight:500">${portalName} complete</div>
-          <div style="font-size:.65rem;color:rgba(250,248,244,.3)">${portalNote}</div>
-        </div>
-        <div style="text-align:right">
-          <div style="font-size:.82rem;color:var(--gold);font-weight:500">${listingsFound} listing${listingsFound!==1?'s':''}</div>
-          <div style="font-size:.62rem;color:rgba(250,248,244,.25)">${searchTime}</div>
+          <div style="font-size:.78rem;color:var(--cream);font-weight:500">${icon} ${portal.name}</div>
+          <div style="font-size:.6rem;color:rgba(250,248,244,.3)">${portal.note} · up to ${portal.maxIters} search rounds</div>
         </div>
       </div>
-      <button id="${id}" style="
-        width:100%;background:var(--gold);color:var(--ink);border:none;padding:.55rem 1.8rem;
-        font-family:var(--sans);font-size:.73rem;letter-spacing:.08em;
-        text-transform:uppercase;cursor:pointer;transition:opacity .15s
-      ">${portalIdx<totalPortals-1?'Continue → '+PORTALS[portalIdx+1]?.name:'Proceed to synthesis →'}</button>`;
+      <div style="display:flex;gap:.4rem">
+        <button id="${id}_yes" style="flex:1;background:var(--gold);color:var(--ink);border:none;padding:.5rem 1rem;font-family:var(--sans);font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;cursor:pointer">Search ${portal.name} →</button>
+        <button id="${id}_skip" style="background:transparent;color:rgba(250,248,244,.4);border:1px solid rgba(250,248,244,.1);padding:.5rem .8rem;font-family:var(--sans);font-size:.6rem;letter-spacing:.06em;text-transform:uppercase;cursor:pointer"
+          onmouseenter="this.style.borderColor='rgba(184,148,74,.3)'" onmouseleave="this.style.borderColor='rgba(250,248,244,.1)'">Skip</button>
+        ${totalListingsSoFar>0?`<button id="${id}_done" style="background:transparent;color:rgba(250,248,244,.4);border:1px solid rgba(250,248,244,.1);padding:.5rem .8rem;font-family:var(--sans);font-size:.6rem;letter-spacing:.06em;text-transform:uppercase;cursor:pointer"
+          onmouseenter="this.style.borderColor='rgba(184,148,74,.3)'" onmouseleave="this.style.borderColor='rgba(250,248,244,.1)'">Done collecting →</button>`:''}
+      </div>`;
+    wrap.appendChild(row);
+    row.scrollIntoView({behavior:'smooth',block:'nearest'});
+    const disable=()=>{row.querySelectorAll('button').forEach(b=>{b.disabled=true;b.style.opacity='.4';});};
+    document.getElementById(id+'_yes').onclick=()=>{disable();resolve('search');};
+    document.getElementById(id+'_skip').onclick=()=>{disable();log(`↷ Skipped ${portal.name}`,logWrap);resolve('skip');};
+    const doneBtn=document.getElementById(id+'_done');
+    if(doneBtn)doneBtn.onclick=()=>{disable();resolve('done');};
+  });
+}
+
+/* Post-search result summary for a portal */
+function showPortalResult(logWrap, portal, listCount, elapsed, queries, timedOut){
+  const toTag=timedOut?' <span style="color:#ef9f27">⏱ partial</span>':'';
+  log(`✓ <strong>${portal.name}</strong>: <span style="color:var(--gold)">${listCount} listing${listCount!==1?'s':''}</span> in ${elapsed}s (${queries} queries)${toTag}`,logWrap);
+}
+
+/* Phase transition checkpoint (used between phases) */
+function waitForPhase(logWrap, title, subtitle, stats, buttonText){
+  return new Promise(resolve=>{
+    const id='phase_'+Date.now();
+    const wrap=document.getElementById(logWrap);
+    const row=document.createElement('div');
+    row.style.cssText='padding:.8rem 0;border-top:1px solid rgba(184,148,74,.15);margin-top:.5rem';
+    row.innerHTML=`
+      <div style="margin-bottom:.5rem">
+        <div style="font-size:.78rem;color:var(--cream);font-weight:500">${title}</div>
+        <div style="font-size:.6rem;color:rgba(250,248,244,.3)">${subtitle}</div>
+      </div>
+      ${stats?`<div style="font-size:.65rem;color:rgba(250,248,244,.45);margin-bottom:.5rem">${stats}</div>`:''}
+      <button id="${id}" style="width:100%;background:var(--gold);color:var(--ink);border:none;padding:.55rem 1.8rem;font-family:var(--sans);font-size:.73rem;letter-spacing:.08em;text-transform:uppercase;cursor:pointer">${buttonText}</button>`;
     wrap.appendChild(row);
     row.scrollIntoView({behavior:'smooth',block:'nearest'});
     document.getElementById(id).onclick=()=>{
@@ -903,7 +935,7 @@ async function searchPortal(brief, portal, logWrap){
     trimOldSearchResults(msgs);
     let data;
     try{
-      data=await apiCall(MODEL_SEARCH,msgs,tools,portal.type==='benchmark'?1024:768);
+      data=await apiCall(MODEL_SEARCH,msgs,tools,DEBUG_CHEAP?512:portal.type==='benchmark'?1024:768);
     }catch(err){
       if(err.message.includes('Timeout')){
         log(`<span style="color:#ef9f27">⏱ ${portal.name} call timed out — collecting what we have…</span>`,logWrap);
@@ -1002,7 +1034,7 @@ Return ONLY JSON:
   /* Allow up to 2 search rounds for enrichment */
   for(let i=0;i<2;i++){
     let data;
-    try{ data=await apiCall(MODEL_SEARCH,msgs,tools,768); }
+    try{ data=await apiCall(MODEL_SEARCH,msgs,tools,DEBUG_CHEAP?384:768); }
     catch(err){
       if(err.message.includes('Timeout'))return{...listing,verified:false,enrich_error:'timeout'};
       throw err;
@@ -1075,7 +1107,7 @@ Return ONLY JSON (no markdown):
   /* 1 search round — one focused query per listing */
   for(let i=0;i<2;i++){
     let data;
-    try{ data=await apiCall(MODEL_SEARCH,msgs,tools,512); }
+    try{ data=await apiCall(MODEL_SEARCH,msgs,tools,DEBUG_CHEAP?256:512); }
     catch(err){
       if(err.message.includes('Timeout'))return{location:district,error:'timeout'};
       return{location:district,error:err.message};
@@ -1335,14 +1367,24 @@ async function agentLoop(prompt,logWrap='logWrap'){
   const portalStats=[];
   let totalQueries=0;
 
-  /* ═══ PHASE 1: Portal-by-portal search ═══ */
-  log('<strong style="color:var(--gold)">Phase 1 — Listing collection</strong> · searching each portal individually',logWrap);
+  /* ═══ PHASE 1: Portal-by-portal search (user picks each) ═══ */
+  log('<strong style="color:var(--gold)">Phase 1 — Listing collection</strong> · choose which portals to search',logWrap);
 
   for(let pi=0;pi<PORTALS.length;pi++){
     const portal=PORTALS[pi];
+
+    /* Ask user before searching */
+    const action=await askPortal(logWrap, portal, pi, PORTALS.length, allListings.length);
+    if(action==='done') break;
+    if(action==='skip'){
+      portalStats.push({name:portal.name,listings:0,time:0,queries:0,skipped:true});
+      continue;
+    }
+
+    /* User chose to search this portal */
+    document.getElementById('panelSub').textContent=`Phase 1 · Searching ${portal.name}…`;
     const icon=portal.type==='agencies'?'🏢':'🔍';
-    document.getElementById('panelSub').textContent=`Phase 1 · Portal ${pi+1}/${PORTALS.length}: ${portal.name}`;
-    log(`${icon} <strong>${portal.name}</strong> — ${portal.note}`,logWrap);
+    log(`${icon} Searching <strong>${portal.name}</strong>…`,logWrap);
 
     try{
       const result=await searchPortal(brief,portal,logWrap);
@@ -1353,29 +1395,23 @@ async function agentLoop(prompt,logWrap='logWrap'){
       if(parsed.listings.length) allListings.push(...parsed.listings);
       totalQueries+=result.queries.length;
 
-      const toTag=result.timedOut?' <span style="color:#ef9f27">⏱ timed out</span>':'';
       portalStats.push({name:portal.name,listings:listCount,time:elapsed,queries:result.queries.length,iters:result.iters,timedOut:result.timedOut});
-      log(`✓ <strong>${listCount} listing${listCount!==1?'s':''}</strong> in ${elapsed}s (${result.queries.length} queries)${toTag}`,logWrap);
-
-      /* Checkpoint between portals */
-      if(pi<PORTALS.length-1){
-        const timeNote=`${elapsed}s · ${result.queries.length} queries${result.timedOut?' · timed out':''}`;
-        await waitForPortal(logWrap,portal.name,portal.note,listCount,timeNote,pi,PORTALS.length);
-      }
+      showPortalResult(logWrap, portal, listCount, elapsed, result.queries.length, result.timedOut);
     }catch(err){
       log(`⚠ <span style="color:rgba(226,75,74,.7)">${portal.name} error: ${err.message}</span>`,logWrap);
       portalStats.push({name:portal.name,listings:0,time:0,queries:0,error:err.message});
-      if(pi<PORTALS.length-1){
-        await waitForPortal(logWrap,portal.name,'Error — skipping',0,'failed',pi,PORTALS.length);
-      }
     }
   }
 
-  /* Show collection stats */
+  /* Show collection stats + checkpoint before enrichment */
   showCollectionStats(allListings, logWrap);
-
-  /* Checkpoint before enrichment */
-  await waitForPortal(logWrap,'All portals','Collection complete',allListings.length,`${totalQueries} searches across ${PORTALS.length} sources`,PORTALS.length-1,PORTALS.length);
+  document.getElementById('panelSub').textContent=`Collection complete · ${allListings.length} listings`;
+  await waitForPhase(logWrap,
+    `Collection complete — ${allListings.length} listings from ${portalStats.filter(s=>!s.skipped&&!s.error).length} portals`,
+    `${totalQueries} searches · ${portalStats.filter(s=>s.skipped).length} skipped`,
+    null,
+    'Continue → Enrichment & verification'
+  );
 
   /* ═══ PHASE 2: Enrich & verify each listing ═══ */
   log('',logWrap);
@@ -1420,12 +1456,22 @@ async function agentLoop(prompt,logWrap='logWrap'){
 
     /* Checkpoint every 5 listings */
     if(num%5===0 && num<uniqueListings.length){
-      await waitForUser(logWrap, Math.ceil(num/5), num);
+      await waitForPhase(logWrap,
+        `Enriched ${num}/${uniqueListings.length}`,
+        `${enrichActive} active · ${enrichArchived} archived · ${enrichFailed} failed`,
+        null,
+        `Continue enriching → ${Math.min(num+5,uniqueListings.length)}/${uniqueListings.length}`
+      );
     }
   }
 
   /* Enrichment summary + checkpoint */
-  await waitForEnrichment(logWrap, uniqueListings.length, allListings.length, enrichActive, enrichArchived+enrichFailed);
+  await waitForPhase(logWrap,
+    `Enrichment complete — ${uniqueListings.length} verified`,
+    `${enrichActive} active · ${enrichArchived} archived · ${enrichFailed} failed`,
+    null,
+    'Continue → per-listing RCN benchmark'
+  );
 
   /* ═══ PHASE 3: Per-listing RCN Benchmark (exact locations) ═══ */
   log('',logWrap);
@@ -1549,7 +1595,7 @@ Return ONLY raw JSON:
 {benchmark:{type:"per_listing",locations_scraped:N,overall_avg_sqm,overall_min_sqm,overall_max_sqm},search_windows:{location_scope,budget_searched,area_searched},properties:[{name,address,location,distance_from_primary,price_total,price_sqm,area_sqm,land_sqm,rooms,floor,year_built,condition:"ready|renovate|developer|unknown",url,search_url,portal,listing_status:"active|archived|unknown",archive_note,match_score(1-10),within_preferences:{budget,area,land,location},rcn_vs_market:"fair|above|below",rcn_local_avg:NUMBER,rcn_sources:[],rcn_confidence:"high|medium|low",highlights:[],caveats:[]}],market_notes,search_queries_used:[]}`;
 
   const synthMsgs=[{role:'user',content:synthPrompt}];
-  const fd=await apiCall(MODEL_SYNTH,synthMsgs,null,4096);
+  const fd=await apiCall(MODEL_SYNTH,synthMsgs,null,DEBUG_CHEAP?2048:4096);
   const txts=fd.content.filter(b=>b.type==='text');
   if(txts.length)return txts.map(b=>b.text).join('');
   throw new Error('No response from synthesis');
