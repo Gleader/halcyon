@@ -732,14 +732,14 @@ const KEEP_FULL_RESULTS = 2;
 
 /* Portals searched in Phase 1 (listing collection) */
 const ALL_PORTALS = [
-  { id:'otodom',   name:'Otodom.pl',   site:'otodom.pl',   type:'portal', tier:'major', maxIters:DEBUG_CHEAP?2:5, note:'Largest Polish portal — deep search' },
-  { id:'olx',      name:'OLX.pl',      site:'olx.pl/nieruchomosci', type:'portal', tier:'major', maxIters:DEBUG_CHEAP?2:5, note:'Major classifieds — broad coverage' },
-  { id:'gratka',   name:'Gratka.pl',   site:'gratka.pl',   type:'portal', tier:'major', maxIters:DEBUG_CHEAP?1:5, note:'Wide coverage — many unique listings' },
-  { id:'morizon',  name:'Morizon.pl',  site:'morizon.pl',  type:'portal', tier:'major', maxIters:DEBUG_CHEAP?1:4, note:'Aggregator — cross-portal results' },
-  { id:'nol',      name:'Nieruchomości-online.pl', site:'nieruchomosci-online.pl', type:'portal', tier:'major', maxIters:DEBUG_CHEAP?1:4, note:'Detail-rich listings' },
-  { id:'domiporta',name:'Domiporta.pl', site:'domiporta.pl', type:'portal', tier:'minor', maxIters:DEBUG_CHEAP?1:3, note:'Secondary portal' },
-  { id:'tabela',   name:'TabelaOfert.pl', site:'tabelaofert.pl', type:'portal', tier:'minor', maxIters:DEBUG_CHEAP?1:3, note:'Developer listings' },
-  { id:'agencies', name:'Premium Agencies', site:null, type:'agencies', tier:'major', maxIters:DEBUG_CHEAP?2:5,
+  { id:'otodom',   name:'Otodom.pl',   site:'otodom.pl',   type:'portal', tier:'major', maxIters:DEBUG_CHEAP?3:5, note:'Largest Polish portal — deep search' },
+  { id:'olx',      name:'OLX.pl',      site:'olx.pl/nieruchomosci', type:'portal', tier:'major', maxIters:DEBUG_CHEAP?3:5, note:'Major classifieds — broad coverage' },
+  { id:'gratka',   name:'Gratka.pl',   site:'gratka.pl',   type:'portal', tier:'major', maxIters:DEBUG_CHEAP?2:5, note:'Wide coverage — many unique listings' },
+  { id:'morizon',  name:'Morizon.pl',  site:'morizon.pl',  type:'portal', tier:'major', maxIters:DEBUG_CHEAP?2:4, note:'Aggregator — cross-portal results' },
+  { id:'nol',      name:'Nieruchomości-online.pl', site:'nieruchomosci-online.pl', type:'portal', tier:'major', maxIters:DEBUG_CHEAP?2:4, note:'Detail-rich listings' },
+  { id:'domiporta',name:'Domiporta.pl', site:'domiporta.pl', type:'portal', tier:'minor', maxIters:DEBUG_CHEAP?2:3, note:'Secondary portal' },
+  { id:'tabela',   name:'TabelaOfert.pl', site:'tabelaofert.pl', type:'portal', tier:'minor', maxIters:DEBUG_CHEAP?2:3, note:'Developer listings' },
+  { id:'agencies', name:'Premium Agencies', site:null, type:'agencies', tier:'major', maxIters:DEBUG_CHEAP?3:5,
     note:'MetroHouse, Freedom, Homfi, Strzelczyk, RE/MAX, Hamilton May, Lions Estate, Partners Intl, Vilea, NuxEstate, Prestige RE',
     sites:['metrohouse.pl','freedom-nieruchomosci.pl','homfi.com','strzelczyk.pl','remax.pl','hamiltonmay.com','lionsestate.pl','partnersinternational.pl','vilea.pl','nuxestate.pl','prestige-real-estate.pl']
   }
@@ -1118,7 +1118,7 @@ async function searchPortal(brief, portal, logWrap){
     trimOldSearchResults(msgs);
     let data;
     try{
-      data=await apiCall(MODEL_SEARCH,msgs,tools,DEBUG_CHEAP?512:portal.type==='benchmark'?1024:768);
+      data=await apiCall(MODEL_SEARCH,msgs,tools,DEBUG_CHEAP?1536:portal.type==='benchmark'?2048:1536);
     }catch(err){
       if(err.message.includes('Timeout')){
         log(`<span style="color:#ef9f27">⏱ ${portal.name} call timed out — collecting what we have…</span>`,logWrap);
@@ -1149,16 +1149,41 @@ async function searchPortal(brief, portal, logWrap){
       log(`<strong>${portal.name}</strong> → <em>"${q.slice(0,70)}${q.length>70?'…':''}"</em>`,logWrap);
     });
 
+    /* ── Try to extract valid JSON from text blocks ── */
+    function tryExtractJSON(textBlocks){
+      const raw=textBlocks.map(b=>b.text).join('');
+      /* Strip markdown fences */
+      let t=raw.trim();
+      const fence=t.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if(fence)t=fence[1].trim();
+      /* Try parsing directly */
+      try{ const p=JSON.parse(t); if(Array.isArray(p)||typeof p==='object') return t; }catch(e){}
+      /* Try extracting JSON array */
+      const arrM=t.match(/\[[\s\S]*\]/);
+      if(arrM){try{ JSON.parse(arrM[0]); return arrM[0]; }catch(e){}}
+      /* Try extracting JSON object */
+      const objM=t.match(/\{[\s\S]*\}/);
+      if(objM){try{ JSON.parse(objM[0]); return objM[0]; }catch(e){}}
+      return null;
+    }
+
     /* Server-side web search: results already in the response, model may need another turn */
     if(data.stop_reason==='end_turn'&&txts.length){
-      const raw=txts.map(b=>b.text).join('');
-      /* Check if the model actually returned JSON or just commentary */
-      if(raw.match(/[\[\{]/)){
+      const validJSON=tryExtractJSON(txts);
+      if(validJSON){
         const elapsed=performance.now()-t0;
-        return{raw,elapsed,queries,iters,timedOut:false};
+        return{raw:validJSON,elapsed,queries,iters,timedOut:false};
       }
-      /* Model returned text but no JSON — ask it to continue searching or return results */
-      msgs.push({role:'user',content:'Continue searching or return the JSON array now with all listings found. Return ONLY JSON, no markdown fences.'});
+      /* Model returned text but no valid JSON — ask it to return results */
+      if(DEBUG_CHEAP)log(`<span style="color:rgba(250,248,244,.3)">[debug] text but no valid JSON, asking for JSON…</span>`,logWrap);
+      msgs.push({role:'user',content:'Now return the JSON array with ALL listings you found. Return ONLY a valid JSON array like [{...},{...}], no commentary, no markdown fences.'});
+      continue;
+    }
+
+    /* Model stopped due to max_tokens — ask it to return results so far */
+    if(data.stop_reason==='max_tokens'){
+      if(DEBUG_CHEAP)log(`<span style="color:rgba(250,248,244,.3)">[debug] max_tokens hit, asking for JSON…</span>`,logWrap);
+      msgs.push({role:'user',content:'Your response was cut off. Return ONLY the JSON array with all listings found so far. No commentary.'});
       continue;
     }
 
@@ -1168,26 +1193,32 @@ async function searchPortal(brief, portal, logWrap){
       continue;
     }
 
-    /* stop_reason is tool_use but handled via server — just continue */
-    if(data.stop_reason==='tool_use'){
+    /* Server-side searches happened but stop_reason is tool_use — model wants more searches */
+    if(serverSearches.length||data.stop_reason==='tool_use'){
       continue;
     }
 
     break;
   }
   /* Loop exhausted or timed out — ask for results */
+  if(DEBUG_CHEAP)log(`<span style="color:rgba(250,248,244,.3)">[debug] loop done after ${iters-1} iters, final collect…</span>`,logWrap);
   let fd;
   try{
-    msgs.push({role:'user',content:'Return the JSON now with all listings found so far. Return ONLY JSON, no markdown fences.'});
-    fd=await apiCall(MODEL_SEARCH,msgs,null,1024);
+    msgs.push({role:'user',content:'Return the JSON array now with ALL listings you found. Return ONLY a valid JSON array like [{name:"...",location:"...",price_total:123,...}]. No commentary, no markdown fences, no explanation.'});
+    fd=await apiCall(MODEL_SEARCH,msgs,null,2048);
   }catch(err){
     /* Even the final collect call timed out — return empty */
     const elapsed=performance.now()-t0;
     return{raw:'[]',elapsed,queries,iters,timedOut:true};
   }
-  const txts=fd.content.filter(b=>b.type==='text');
+  const txts2=fd.content.filter(b=>b.type==='text');
   const elapsed=performance.now()-t0;
-  return{raw:txts.length?txts.map(b=>b.text).join(''):'[]',elapsed,queries,iters,timedOut};
+  if(DEBUG_CHEAP){
+    const preview=txts2.length?txts2[0].text.slice(0,120):'(empty)';
+    console.log(`[${portal.name} final collect] ${preview}`);
+    log(`<span style="color:rgba(250,248,244,.3)">[debug] final: ${preview.slice(0,80)}…</span>`,logWrap);
+  }
+  return{raw:txts2.length?txts2.map(b=>b.text).join(''):'[]',elapsed,queries,iters,timedOut};
 }
 
 /* Parse portal result — tolerant of various formats */
