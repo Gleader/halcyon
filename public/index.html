@@ -948,7 +948,46 @@ function getApiKey(){
   _apiKey=(document.getElementById('apiKeyInput')?.value||'').trim();
   return _apiKey;
 }
-async function apiCall(model,msgs,tools,maxTok){
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+/* Show rate-limit countdown and ask user to retry or skip */
+function askRateLimitRetry(waitSec, retryNum){
+  return new Promise(resolve=>{
+    spinner(false);
+    const id='rl_'+Date.now();
+    const wrap=document.getElementById('logWrap');
+    const row=document.createElement('div');
+    row.style.cssText='padding:.6rem 0;border-top:1px solid rgba(226,75,74,.15);margin-top:.3rem';
+    row.innerHTML=`
+      <div style="font-size:.75rem;color:rgba(226,75,74,.8);margin-bottom:.4rem">⚠ Rate limited by Anthropic (50k tokens/min)</div>
+      <div style="font-size:.7rem;color:rgba(250,248,244,.5);margin-bottom:.5rem">
+        Recommended wait: <strong style="color:var(--gold)" id="${id}_timer">${waitSec}s</strong> · attempt ${retryNum}/3
+      </div>
+      <div style="display:flex;gap:.4rem">
+        <button id="${id}_wait" style="flex:1;background:var(--gold);color:var(--ink);border:none;padding:.45rem 1rem;font-family:var(--sans);font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;cursor:pointer">Wait ${waitSec}s & retry →</button>
+        <button id="${id}_skip" style="background:transparent;color:rgba(250,248,244,.4);border:1px solid rgba(250,248,244,.1);padding:.45rem .8rem;font-family:var(--sans);font-size:.6rem;letter-spacing:.06em;text-transform:uppercase;cursor:pointer">Skip</button>
+      </div>`;
+    wrap.appendChild(row);
+    row.scrollIntoView({behavior:'smooth',block:'nearest'});
+
+    document.getElementById(id+'_skip').onclick=()=>{
+      row.querySelectorAll('button').forEach(b=>{b.disabled=true;b.style.opacity='.4';});
+      resolve('skip');
+    };
+    document.getElementById(id+'_wait').onclick=()=>{
+      row.querySelectorAll('button').forEach(b=>{b.disabled=true;b.style.opacity='.4';});
+      const timerEl=document.getElementById(id+'_timer');
+      let remaining=waitSec;
+      const iv=setInterval(()=>{
+        remaining--;
+        if(timerEl)timerEl.textContent=remaining+'s';
+        if(remaining<=0){clearInterval(iv);spinner(true);resolve('retry');}
+      },1000);
+    };
+  });
+}
+
+async function apiCall(model,msgs,tools,maxTok,_retry=0){
   const key=getApiKey();
   if(!key)throw new Error('API key not set — enter your Anthropic API key above.');
   const payload={model,max_tokens:maxTok,messages:msgs};
@@ -968,6 +1007,13 @@ async function apiCall(model,msgs,tools,maxTok){
       signal:ctrl.signal
     });
     clearTimeout(timer);
+    /* Rate limit — ask user to wait & retry or skip */
+    if(res.status===429&&_retry<3){
+      const waitSec=Math.pow(2,_retry)*15; /* 15s, 30s, 60s */
+      const action=await askRateLimitRetry(waitSec, _retry+1);
+      if(action==='retry')return apiCall(model,msgs,tools,maxTok,_retry+1);
+      throw new Error('Rate limited — skipped by user');
+    }
     if(!res.ok){const e=await res.text();throw new Error(`${res.status}: ${e}`);}
     return res.json();
   }catch(err){
