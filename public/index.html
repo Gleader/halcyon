@@ -1129,15 +1129,18 @@ async function searchPortal(brief, portal, logWrap){
     }
     /* Debug: log content block types */
     const blockTypes=data.content.map(b=>b.type).join(', ');
+    const textPreview=data.content.filter(b=>b.type==='text').map(b=>b.text.slice(0,80)).join(' | ');
     console.log(`[${portal.name} iter ${iters}] stop=${data.stop_reason} blocks=[${blockTypes}]`);
-    if(DEBUG_CHEAP)log(`<span style="color:rgba(250,248,244,.2)">[debug] stop=${data.stop_reason} blocks=[${blockTypes}]</span>`,logWrap);
+    console.log(`[${portal.name} iter ${iters}] text preview: ${textPreview||'(none)'}`);
+    log(`<span style="color:rgba(250,248,244,.35)">[iter ${iters}] stop=${data.stop_reason} blocks=[${blockTypes}]</span>`,logWrap);
 
     msgs.push({role:'assistant',content:data.content});
     const tus=data.content.filter(b=>b.type==='tool_use');
     const serverSearches=data.content.filter(b=>b.type==='server_tool_use'&&b.name==='web_search');
+    const searchResults=data.content.filter(b=>b.type==='web_search_tool_result');
     const txts=data.content.filter(b=>b.type==='text');
 
-    /* Log search queries (from both server-side and client-side tool use) */
+    /* Log search queries */
     serverSearches.forEach(s=>{
       const q=s.input?.query||'';
       queries.push(q);
@@ -1145,59 +1148,62 @@ async function searchPortal(brief, portal, logWrap){
     });
     tus.forEach(tu=>{
       const q=tu.input?.query||'';
-      if(!serverSearches.length)queries.push(q); /* avoid double-counting */
+      if(!serverSearches.length)queries.push(q);
       log(`<strong>${portal.name}</strong> → <em>"${q.slice(0,70)}${q.length>70?'…':''}"</em>`,logWrap);
     });
 
-    /* ── Try to extract valid JSON from text blocks ── */
-    function tryExtractJSON(textBlocks){
-      const raw=textBlocks.map(b=>b.text).join('');
-      /* Strip markdown fences */
+    /* ── DECISION TREE ── */
+
+    /* 1) If model returned text, try to extract JSON */
+    if(txts.length){
+      const raw=txts.map(b=>b.text).join('');
       let t=raw.trim();
       const fence=t.match(/```(?:json)?\s*([\s\S]*?)```/);
       if(fence)t=fence[1].trim();
-      /* Try parsing directly */
-      try{ const p=JSON.parse(t); if(Array.isArray(p)||typeof p==='object') return t; }catch(e){}
-      /* Try extracting JSON array */
-      const arrM=t.match(/\[[\s\S]*\]/);
-      if(arrM){try{ JSON.parse(arrM[0]); return arrM[0]; }catch(e){}}
-      /* Try extracting JSON object */
-      const objM=t.match(/\{[\s\S]*\}/);
-      if(objM){try{ JSON.parse(objM[0]); return objM[0]; }catch(e){}}
-      return null;
-    }
+      let validJSON=null;
+      /* Try parsing full text as JSON */
+      try{ const p=JSON.parse(t); if(Array.isArray(p)||typeof p==='object') validJSON=t; }catch(e){}
+      /* Try extracting JSON array from text */
+      if(!validJSON){const m=t.match(/\[[\s\S]*\]/);if(m){try{JSON.parse(m[0]);validJSON=m[0];}catch(e){}}}
+      /* Try extracting JSON object from text */
+      if(!validJSON){const m=t.match(/\{[\s\S]*\}/);if(m){try{JSON.parse(m[0]);validJSON=m[0];}catch(e){}}}
 
-    /* Server-side web search: results already in the response, model may need another turn */
-    if(data.stop_reason==='end_turn'&&txts.length){
-      const validJSON=tryExtractJSON(txts);
-      if(validJSON){
+      if(validJSON && data.stop_reason==='end_turn'){
+        console.log(`[${portal.name}] ✅ Valid JSON found, returning`);
+        log(`<span style="color:rgba(250,248,244,.35)">[iter ${iters}] ✅ valid JSON found</span>`,logWrap);
         const elapsed=performance.now()-t0;
         return{raw:validJSON,elapsed,queries,iters,timedOut:false};
       }
-      /* Model returned text but no valid JSON — ask it to return results */
-      if(DEBUG_CHEAP)log(`<span style="color:rgba(250,248,244,.3)">[debug] text but no valid JSON, asking for JSON…</span>`,logWrap);
+      /* Text present but no valid JSON (or not end_turn) — ask for JSON */
+      console.log(`[${portal.name}] text present but no valid JSON (stop=${data.stop_reason}), asking for JSON`);
+      log(`<span style="color:rgba(250,248,244,.35)">[iter ${iters}] no valid JSON in text, requesting…</span>`,logWrap);
       msgs.push({role:'user',content:'Now return the JSON array with ALL listings you found. Return ONLY a valid JSON array like [{...},{...}], no commentary, no markdown fences.'});
       continue;
     }
 
-    /* Model stopped due to max_tokens — ask it to return results so far */
+    /* 2) No text at all — handle by stop_reason */
     if(data.stop_reason==='max_tokens'){
-      if(DEBUG_CHEAP)log(`<span style="color:rgba(250,248,244,.3)">[debug] max_tokens hit, asking for JSON…</span>`,logWrap);
-      msgs.push({role:'user',content:'Your response was cut off. Return ONLY the JSON array with all listings found so far. No commentary.'});
+      console.log(`[${portal.name}] max_tokens with no text, asking for JSON`);
+      msgs.push({role:'user',content:'Your response was cut off. Return ONLY the JSON array with all listings found so far.'});
       continue;
     }
 
-    /* Model wants to do another tool call — send back tool results to continue the loop */
+    /* 3) Client-side tool_use — send tool_results */
     if(tus.length){
-      msgs.push({role:'user',content:tus.map(tu=>({type:'tool_result',tool_use_id:tu.id,content:'Search results are in the conversation above. Continue extracting listings or return JSON array now.'}))});
+      console.log(`[${portal.name}] client tool_use, sending tool_results`);
+      msgs.push({role:'user',content:tus.map(tu=>({type:'tool_result',tool_use_id:tu.id,content:'Search results available. Continue or return JSON array now.'}))});
       continue;
     }
 
-    /* Server-side searches happened but stop_reason is tool_use — model wants more searches */
-    if(serverSearches.length||data.stop_reason==='tool_use'){
+    /* 4) Server did searches but no text output — need to prompt model to continue */
+    if(serverSearches.length){
+      console.log(`[${portal.name}] server search done, no text — prompting model to analyze results`);
+      msgs.push({role:'user',content:'You performed web searches. Now analyze the results and return a JSON array of all listings found. Return ONLY valid JSON.'});
       continue;
     }
 
+    /* 5) Unknown state — break */
+    console.log(`[${portal.name}] unknown state stop=${data.stop_reason}, breaking`);
     break;
   }
   /* Loop exhausted or timed out — ask for results */
