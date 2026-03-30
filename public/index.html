@@ -1127,25 +1127,52 @@ async function searchPortal(brief, portal, logWrap){
       }
       throw err;
     }
+    /* Debug: log content block types */
+    const blockTypes=data.content.map(b=>b.type).join(', ');
+    console.log(`[${portal.name} iter ${iters}] stop=${data.stop_reason} blocks=[${blockTypes}]`);
+    if(DEBUG_CHEAP)log(`<span style="color:rgba(250,248,244,.2)">[debug] stop=${data.stop_reason} blocks=[${blockTypes}]</span>`,logWrap);
+
     msgs.push({role:'assistant',content:data.content});
     const tus=data.content.filter(b=>b.type==='tool_use');
+    const serverSearches=data.content.filter(b=>b.type==='server_tool_use'&&b.name==='web_search');
     const txts=data.content.filter(b=>b.type==='text');
 
-    if(tus.length){
-      tus.forEach(tu=>{
-        const q=tu.input?.query||'';
-        queries.push(q);
-        log(`<strong>${portal.name}</strong> → <em>"${q.slice(0,70)}${q.length>70?'…':''}"</em>`,logWrap);
-      });
-      msgs.push({role:'user',content:tus.map(tu=>({type:'tool_result',tool_use_id:tu.id,content:'(executed)'}))});
-      continue;
-    }
-    /* Model returned text — this is the result */
+    /* Log search queries (from both server-side and client-side tool use) */
+    serverSearches.forEach(s=>{
+      const q=s.input?.query||'';
+      queries.push(q);
+      log(`<strong>${portal.name}</strong> → <em>"${q.slice(0,70)}${q.length>70?'…':''}"</em>`,logWrap);
+    });
+    tus.forEach(tu=>{
+      const q=tu.input?.query||'';
+      if(!serverSearches.length)queries.push(q); /* avoid double-counting */
+      log(`<strong>${portal.name}</strong> → <em>"${q.slice(0,70)}${q.length>70?'…':''}"</em>`,logWrap);
+    });
+
+    /* Server-side web search: results already in the response, model may need another turn */
     if(data.stop_reason==='end_turn'&&txts.length){
       const raw=txts.map(b=>b.text).join('');
-      const elapsed=performance.now()-t0;
-      return{raw,elapsed,queries,iters,timedOut:false};
+      /* Check if the model actually returned JSON or just commentary */
+      if(raw.match(/[\[\{]/)){
+        const elapsed=performance.now()-t0;
+        return{raw,elapsed,queries,iters,timedOut:false};
+      }
+      /* Model returned text but no JSON — ask it to continue searching or return results */
+      msgs.push({role:'user',content:'Continue searching or return the JSON array now with all listings found. Return ONLY JSON, no markdown fences.'});
+      continue;
     }
+
+    /* Model wants to do another tool call — send back tool results to continue the loop */
+    if(tus.length){
+      msgs.push({role:'user',content:tus.map(tu=>({type:'tool_result',tool_use_id:tu.id,content:'Search results are in the conversation above. Continue extracting listings or return JSON array now.'}))});
+      continue;
+    }
+
+    /* stop_reason is tool_use but handled via server — just continue */
+    if(data.stop_reason==='tool_use'){
+      continue;
+    }
+
     break;
   }
   /* Loop exhausted or timed out — ask for results */
@@ -1224,15 +1251,17 @@ Return ONLY JSON:
     }
     msgs.push({role:'assistant',content:data.content});
     const tus=data.content.filter(b=>b.type==='tool_use');
+    const serverSearches=data.content.filter(b=>b.type==='server_tool_use');
     const txts=data.content.filter(b=>b.type==='text');
-    if(tus.length){
-      tus.forEach(tu=>{
-        const q=tu.input?.query||'';
-        log(`  → <em>"${q.slice(0,60)}${q.length>60?'…':''}"</em>`,logWrap);
-      });
-      msgs.push({role:'user',content:tus.map(tu=>({type:'tool_result',tool_use_id:tu.id,content:'(executed)'}))});
-      continue;
-    }
+    /* Log queries from server-side searches */
+    serverSearches.forEach(s=>{
+      const q=s.input?.query||'';
+      log(`  → <em>"${q.slice(0,60)}${q.length>60?'…':''}"</em>`,logWrap);
+    });
+    tus.forEach(tu=>{
+      const q=tu.input?.query||'';
+      log(`  → <em>"${q.slice(0,60)}${q.length>60?'…':''}"</em>`,logWrap);
+    });
     if(data.stop_reason==='end_turn'&&txts.length){
       const raw=txts.map(b=>b.text).join('');
       try{
@@ -1243,6 +1272,12 @@ Return ONLY JSON:
         return enriched;
       }catch(e){return{...listing,verified:false,enrich_error:'parse_error'};}
     }
+    /* Continue if model wants more tool calls */
+    if(tus.length){
+      msgs.push({role:'user',content:tus.map(tu=>({type:'tool_result',tool_use_id:tu.id,content:'Search results above. Return JSON now.'}))});
+      continue;
+    }
+    if(data.stop_reason==='tool_use')continue;
   }
   return{...listing,verified:false,enrich_error:'max_iters'};
 }
@@ -1297,13 +1332,16 @@ Return ONLY JSON (no markdown):
     }
     msgs.push({role:'assistant',content:data.content});
     const tus=data.content.filter(b=>b.type==='tool_use');
+    const serverSearches=data.content.filter(b=>b.type==='server_tool_use');
     const txts=data.content.filter(b=>b.type==='text');
-    if(tus.length){
-      const q=tus[0]?.input?.query||'';
+    serverSearches.forEach(s=>{
+      const q=s.input?.query||'';
       log(`  → RCN <em>"${q.slice(0,55)}${q.length>55?'…':''}"</em>`,logWrap);
-      msgs.push({role:'user',content:tus.map(tu=>({type:'tool_result',tool_use_id:tu.id,content:'(executed)'}))});
-      continue;
-    }
+    });
+    tus.forEach(tu=>{
+      const q=tu.input?.query||'';
+      log(`  → RCN <em>"${q.slice(0,55)}${q.length>55?'…':''}"</em>`,logWrap);
+    });
     if(data.stop_reason==='end_turn'&&txts.length){
       const raw=txts.map(b=>b.text).join('');
       try{
@@ -1313,6 +1351,11 @@ Return ONLY JSON (no markdown):
         return bm;
       }catch(e){return{location:district,error:'parse_error'};}
     }
+    if(tus.length){
+      msgs.push({role:'user',content:tus.map(tu=>({type:'tool_result',tool_use_id:tu.id,content:'Search results above. Return JSON now.'}))});
+      continue;
+    }
+    if(data.stop_reason==='tool_use')continue;
   }
   return{location:district,error:'max_iters'};
 }
