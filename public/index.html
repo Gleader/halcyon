@@ -7,6 +7,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<!-- Supabase disabled for now — uncomment to enable DB saving
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+-->
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -399,6 +402,16 @@ footer{background:#080809;padding:1.5rem;display:flex;align-items:center;justify
         <input id="apiKeyInput" class="fi" type="password" placeholder="sk-ant-…" style="margin-top:.3rem;font-size:.75rem;letter-spacing:.05em"/>
         <div style="font-size:.55rem;color:rgba(250,248,244,.18);margin-top:.25rem">Stays in your browser only — never sent to any server except Anthropic.</div>
       </div>
+      <details style="margin-top:.6rem;display:none">
+        <summary style="font-size:.6rem;text-transform:uppercase;letter-spacing:.12em;color:rgba(250,248,244,.2);cursor:pointer;padding:.3rem 0">Supabase (save results)</summary>
+        <div style="padding:.5rem .7rem;background:rgba(250,248,244,.02);border:1px solid rgba(250,248,244,.04);margin-top:.3rem">
+          <label style="font-size:.55rem;text-transform:uppercase;letter-spacing:.1em;color:rgba(250,248,244,.25)">Project URL</label>
+          <input id="supabaseUrl" class="fi" type="text" placeholder="https://xxxxx.supabase.co" style="margin-top:.2rem;font-size:.7rem"/>
+          <label style="font-size:.55rem;text-transform:uppercase;letter-spacing:.1em;color:rgba(250,248,244,.25);margin-top:.4rem;display:block">Anon key</label>
+          <input id="supabaseKey" class="fi" type="password" placeholder="eyJ…" style="margin-top:.2rem;font-size:.7rem"/>
+          <div style="font-size:.5rem;color:rgba(250,248,244,.15);margin-top:.25rem">Optional — results are saved to your Supabase Postgres database.</div>
+        </div>
+      </details>
       <button class="submit-btn" id="submitBtn" onclick="runSearch(event)">Search & benchmark →</button>
     </div>
   </div>
@@ -829,6 +842,102 @@ function waitForPhase(logWrap, title, subtitle, stats, buttonText){
       resolve();
     };
   });
+}
+
+/* ── Supabase (save search results) ── */
+let _supabase=null;
+function getSupabase(){
+  if(_supabase)return _supabase;
+  const url=(document.getElementById('supabaseUrl')?.value||'').trim();
+  const key=(document.getElementById('supabaseKey')?.value||'').trim();
+  if(!url||!key)return null;
+  _supabase=window.supabase.createClient(url,key);
+  return _supabase;
+}
+
+async function saveSearch(brief, portalStats, totalQueries, durationS, benchmark, listings){
+  const sb=getSupabase();
+  if(!sb)return null; /* Supabase not configured — skip silently */
+  try{
+    const{data:search,error:sErr}=await sb.from('searches').insert({
+      brief,
+      portals_searched:portalStats.filter(p=>!p.skipped).map(p=>p.name),
+      total_listings:listings.length,
+      total_queries:totalQueries,
+      duration_s:durationS,
+      benchmark
+    }).select().single();
+    if(sErr)throw sErr;
+
+    if(listings.length){
+      const rows=listings.map(l=>({
+        search_id:search.id,
+        name:l.name||null,
+        address:l.full_address||l.address||null,
+        location:l.location||null,
+        price_total:l.price_total||null,
+        price_sqm:l.price_sqm||null,
+        area_sqm:l.area_sqm||null,
+        land_sqm:l.land_sqm||null,
+        rooms:l.rooms||null,
+        floor:l.floor||null,
+        year_built:l.year_built||null,
+        condition:l.condition||null,
+        portal:l.portal||null,
+        url:l.url||null,
+        search_url:l.search_url||null,
+        listing_status:l.listing_status||null,
+        archive_note:l.archive_note||null,
+        match_score:l.match_score||l.prelim_score||null,
+        verified:l.verified||false,
+        match_assessment:l.match_assessment||null,
+        rcn_benchmark:l.rcn_benchmark||null,
+        rcn_vs_market:l.rcn_vs_market||null,
+        highlights:l.highlights||null,
+        caveats:l.caveats||null,
+        raw_data:l
+      }));
+      const{error:lErr}=await sb.from('listings').insert(rows);
+      if(lErr)throw lErr;
+    }
+
+    return search.id;
+  }catch(err){
+    console.warn('Supabase save failed:',err);
+    return null;
+  }
+}
+
+async function loadRecentSearches(limit=10){
+  const sb=getSupabase();
+  if(!sb)return[];
+  try{
+    const{data,error}=await sb.from('searches')
+      .select('id,created_at,brief,portals_searched,total_listings,total_queries,duration_s')
+      .order('created_at',{ascending:false})
+      .limit(limit);
+    if(error)throw error;
+    return data||[];
+  }catch(err){
+    console.warn('Supabase load failed:',err);
+    return[];
+  }
+}
+
+async function loadSearchListings(searchId){
+  const sb=getSupabase();
+  if(!sb)return[];
+  try{
+    const{data,error}=await sb.from('listings')
+      .select('*')
+      .eq('search_id',searchId)
+      .order('match_score',{ascending:false});
+    if(error)throw error;
+    return data||[];
+  }catch(err){
+    console.warn('Supabase load failed:',err);
+    return[];
+  }
 }
 
 /* ── Direct Anthropic API (no proxy needed) ── */
@@ -2165,9 +2274,16 @@ async function runSearch(e){
   log(`<strong>${b.propertyType}</strong> · <strong>${b.location||'location not set'}</strong>${b.radius>0?' + '+b.radius+'km radius':''}`);
   log(`Budget: ${isLocked('budget')&&b.hardBudget?'<strong>LOCKED</strong>':'±30% flexible'} · Area: ${isLocked('area')?'<strong>LOCKED</strong>':'±30% flexible'}`);
   log('Searching — active listings only, archiving flagged separately…');
+  const searchT0=performance.now();
   try{
     const raw=await agentLoop(buildMainPrompt(b));
-    render(parseJSON(raw));
+    const parsed=parseJSON(raw);
+    render(parsed);
+    /* Save to Supabase (disabled for now — uncomment to enable)
+    const durationS=Math.round((performance.now()-searchT0)/1000);
+    saveSearch(b,[],0,durationS,parsed.benchmark||null,parsed.properties||[]).then(sid=>{
+      if(sid)log('Saved to database ('+sid.slice(0,8)+'…)');
+    }); */
   }catch(err){
     document.getElementById('loading').style.display='none';
     document.getElementById('results').style.display='block';
