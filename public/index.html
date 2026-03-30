@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>Halcyon — Real Estate Advisory</title>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -193,7 +195,32 @@ footer{background:#080809;padding:1.5rem;display:flex;align-items:center;justify
 .flogo{font-family:var(--serif);font-size:.95rem;letter-spacing:.13em;text-transform:uppercase;color:rgba(250,248,244,.22)}
 .flogo span{color:var(--gold);opacity:.6}
 .fnote{font-size:.65rem;color:rgba(250,248,244,.16)}
-@media(max-width:680px){.form-grid{grid-template-columns:1fr;gap:1.5rem}.frow{grid-template-columns:1fr}.bm-grid{grid-template-columns:1fr 1fr}.calib-grid{grid-template-columns:1fr 1fr}}
+/* MAP & LOCATION STATS */
+.map-section{margin-bottom:1.2rem}
+.map-tabs{display:flex;gap:0;margin-bottom:0}
+.map-tab{flex:1;padding:.55rem;background:rgba(250,248,244,.03);border:1px solid rgba(250,248,244,.06);text-align:center;font-size:.65rem;letter-spacing:.1em;text-transform:uppercase;color:rgba(250,248,244,.3);cursor:pointer;transition:all .15s}
+.map-tab:first-child{border-right:none}
+.map-tab.active{background:rgba(184,148,74,.1);border-color:rgba(184,148,74,.3);color:var(--gold)}
+.map-tab:hover:not(.active){color:rgba(250,248,244,.5)}
+#mapContainer{height:340px;background:#0c0d10;border:1px solid rgba(250,248,244,.06);border-top:none;position:relative;z-index:1}
+#mapContainer .leaflet-tile-pane{filter:saturate(.3) brightness(.55) contrast(1.1)}
+#mapContainer .leaflet-control-zoom a{background:var(--ink);color:var(--gold);border-color:rgba(184,148,74,.3)}
+#mapContainer .leaflet-control-attribution{background:rgba(12,13,16,.85)!important;color:rgba(250,248,244,.2)!important;font-size:.5rem!important}
+#mapContainer .leaflet-control-attribution a{color:rgba(184,148,74,.4)!important}
+.loc-stats{border:1px solid rgba(250,248,244,.06);border-top:none;background:rgba(250,248,244,.02);padding:1rem 1.2rem}
+.loc-stats-title{font-size:.6rem;letter-spacing:.15em;text-transform:uppercase;color:var(--gold);margin-bottom:.8rem}
+.loc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.6rem}
+.loc-card{padding:.7rem .9rem;background:rgba(250,248,244,.03);border:1px solid rgba(250,248,244,.06);transition:border-color .15s;cursor:default}
+.loc-card:hover{border-color:rgba(184,148,74,.25)}
+.loc-card-name{font-family:var(--serif);font-size:.9rem;color:var(--cream);margin-bottom:.3rem}
+.loc-card-row{display:flex;justify-content:space-between;font-size:.7rem;color:rgba(250,248,244,.4);line-height:1.7}
+.loc-card-row strong{color:rgba(250,248,244,.7)}
+.loc-card-bar{height:3px;background:rgba(250,248,244,.06);margin-top:.4rem;border-radius:2px;overflow:hidden}
+.loc-card-fill{height:100%;background:var(--gold);border-radius:2px}
+.loc-badge{display:inline-block;padding:.1rem .4rem;font-size:.58rem;text-transform:uppercase;letter-spacing:.05em;margin-right:.3rem}
+.loc-badge.active{background:rgba(30,158,117,.12);color:#5dcaa5;border:1px solid rgba(30,158,117,.25)}
+.loc-badge.archived{background:rgba(192,57,43,.1);color:#e24b4a;border:1px solid rgba(192,57,43,.25)}
+@media(max-width:680px){.form-grid{grid-template-columns:1fr;gap:1.5rem}.frow{grid-template-columns:1fr}.bm-grid{grid-template-columns:1fr 1fr}.calib-grid{grid-template-columns:1fr 1fr}#mapContainer{height:240px}.loc-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -405,6 +432,17 @@ footer{background:#080809;padding:1.5rem;display:flex;align-items:center;justify
         <div style="font-size:.67rem;color:rgba(250,248,244,.22);margin-top:.6rem;line-height:1.6">These are historical asking prices — actual transaction prices (RCN) are typically 10–15% lower. Use as directional calibration only.</div>
       </div>
       <div class="bm-box" id="bmBox"></div>
+
+      <!-- MAP & LOCATION STATS -->
+      <div class="map-section" id="mapSection" style="display:none">
+        <div class="map-tabs">
+          <div class="map-tab active" onclick="showMapView('map')">Map view</div>
+          <div class="map-tab" onclick="showMapView('stats')">Location stats</div>
+        </div>
+        <div id="mapContainer"></div>
+        <div class="loc-stats" id="locStats" style="display:none"></div>
+      </div>
+
       <div class="cards-lbl">Results — <strong style="color:var(--gold)">Inspect →</strong> for full material analysis · archived listings offer calibration data rather than a viewing</div>
       <div id="cardList"></div>
       <div id="notesBox" style="display:none" class="notes-box"></div>
@@ -433,6 +471,7 @@ footer{background:#080809;padding:1.5rem;display:flex;align-items:center;justify
 /* ─── calibration store ─── */
 const calibData = [];
 let _inspectProp = null, _inspectResult = null;
+let lastBrief = null; // stored for search URL fallback builder
 
 function addCalib(property, d) {
   const psm = d?.listing_details?.price_sqm || property.price_sqm;
@@ -546,23 +585,58 @@ ${lockArea?`AREA LOCKED: ${rangeStr(b.hardAreaMin,b.hardAreaMax,' m²')}.`:`AREA
 ${(b.propertyType==='house'||b.propertyType==='both')?lockLand?`LAND LOCKED: ${rangeStr(b.hardLandMin,b.hardLandMax,' m²')}.`:`LAND FLEXIBLE: search ${rangeStr(lw.lo,lw.hi,' m²')} (±${Math.round(F*100)}%).`:''}
 HARD EXCLUSIONS: ${otherDbs.join(', ')||'none'}
 
-LISTING STATUS RULE — CRITICAL:
-You MUST check whether each listing is active or archived before including it. Look for:
-- Polish indicators: "ogłoszenie archiwalne", "nieaktualne", "oferta zakończona", "archiwalne"
-- URL patterns: if a portal search page (not an individual listing /oferta/ URL) is returned, that listing may not exist
-- Prefer listings updated in 2025 or 2026
+ARCHIVE FILTERING — CRITICAL:
+Your goal is to return ACTIVE listings. Use these rules to filter aggressively:
+
+SEARCH STRATEGY — exclude archives at query level:
+- Append "-archiwalne -nieaktualne -zakończone" to your search queries
+- On otodom: use searches like "dom Wawer site:otodom.pl/pl/oferta -archiwalne"
+- On olx: prefer olx.pl/nieruchomosci (active section), NOT olx.pl/oferta (can be expired)
+- Prefer results from the last 3 months (add "2025" or "2026" to queries)
+
+PORTAL-SPECIFIC ARCHIVE SIGNALS — if you see ANY of these, mark as archived:
+- otodom.pl: page title/body contains "Ogłoszenie archiwalne" or "To ogłoszenie jest nieaktualne"; URL redirects to search results instead of /pl/oferta/... detail page
+- nieruchomosci-online.pl: banner "Oferta nieaktualna" or "archiwalna"; HTTP 404
+- gratka.pl: "Ogłoszenie wygasło" or "nieaktualne"; redirect to listing index
+- morizon.pl: "Oferta archiwalna" or "Ta oferta nie jest już dostępna"
+- olx.pl: "To ogłoszenie jest już nieaktualne" or "Ogłoszenie zakończone"
+- domiporta.pl: "Oferta wygasła" or 404 page
+- Agency sites: any "sprzedane", "sold", "wynajęte", "rented" tag; listing missing from their current offers page
+
+URL PATTERNS THAT INDICATE ARCHIVE/INVALID:
+- URL points to a search results page (list) instead of a single listing detail page
+- URL contains "/archiwalne/", "/archive/", or "/sold/"
+- URL returns 301/302 redirect to homepage or search page
+
 For EACH listing set listing_status: "active", "archived", or "unknown"
-- Do NOT omit archived listings — include them with status "archived" so price data can be used for market calibration
-- For active listings: find the DIRECT individual listing URL (e.g. otodom.pl/pl/oferta/... or nieruchomosci-online.pl/dom.../12345.html)
+- Include archived listings (for price calibration) but clearly mark them
+
+LINK STRATEGY — IMPORTANT:
+Individual listing URLs go stale quickly. For EACH property provide TWO links:
+1. "url" — the direct listing URL if you found one (may go stale)
+2. "search_url" — a TIGHTLY FILTERED portal search URL that narrows results to ~1-5 listings matching this property. Use these portal URL patterns:
+
+OTODOM (preferred):
+https://www.otodom.pl/pl/wyniki/sprzedaz/dom/[voivodeship]/[city]?priceMin=[X]&priceMax=[Y]&areaMin=[X]&areaMax=[Y]&distanceRadius=0
+Example: https://www.otodom.pl/pl/wyniki/sprzedaz/dom/mazowieckie/warszawa/warszawa/warszawa/wawer?priceMin=1400000&priceMax=1550000&areaMin=140&areaMax=160&distanceRadius=0
+- Use ±5% around the listing's price and area to keep results to 1-5 hits
+- Location path: /voivodeship/city or /voivodeship/city/city/city/district
+
+OLX:
+https://www.olx.pl/nieruchomosci/domy/sprzedaz/[city]/?search%5Bfilter_float_price%3Afrom%5D=[X]&search%5Bfilter_float_price%3Ato%5D=[Y]&search%5Bfilter_float_m%3Afrom%5D=[X]&search%5Bfilter_float_m%3Ato%5D=[Y]
+
+For other portals (nieruchomosci-online, gratka, morizon, agencies): provide the direct listing URL if found, or the closest filtered search page you can construct.
 
 TASKS:
-1. Search otodom.pl, nieruchomosci-online.pl, gratka.pl, morizon.pl with the search windows above
-2. Check listing_status for each result carefully
-3. Search RCN benchmarks: "ceny nieruchomości ${b.location} 2025 2026 transakcje notarialne"
-4. Return 3–5 listings with clear status labelling
+1. Search these PORTALS: otodom.pl, nieruchomosci-online.pl, gratka.pl, morizon.pl, olx.pl, domiporta.pl, tabelaofert.pl
+2. Also search these AGENCY sites: metrohouse.pl, freedom-nieruchomosci.pl, homfi.com, strzelczyk.pl, remax.pl, hamiltonmay.com, lionsestate.pl, partnersinternational.pl, vilea.pl, nuxestate.pl, prestige-real-estate.pl
+3. Check listing_status for each result carefully
+4. Search RCN benchmarks: "ceny nieruchomości ${b.location} 2025 2026 transakcje notarialne"
+5. Return 3–5 listings with clear status labelling
+Note: you don't need to search every portal individually — use broad queries and site-specific ones for the top 3-4 most relevant sources to stay within the search budget.
 
-Return ONLY raw JSON:
-{"benchmark":{"district":"string","avg_price_sqm":number,"min_price_sqm":number,"max_price_sqm":number,"source":"string","assessment":"string"},"search_windows":{"location_scope":"string","budget_searched":"string","area_searched":"string","land_searched":"string|null"},"properties":[{"name":"string","address":"string","location":"string","distance_from_primary":"string|null","price_total":number,"price_sqm":number,"area_sqm":number,"land_sqm":number|null,"rooms":number|null,"floor":"string|null","year_built":number|null,"condition":"ready"|"renovate"|"developer"|"unknown","url":"string","portal":"string","listing_status":"active"|"archived"|"unknown","archive_note":"string|null","match_score":number,"within_preferences":{"budget":boolean,"area":boolean,"land":boolean|null,"location":boolean},"rcn_vs_market":"fair"|"above"|"below","highlights":["string"],"caveats":["string"]}],"market_notes":"string","search_queries_used":["string"]}`;
+Return ONLY raw JSON matching this compact schema:
+{benchmark:{district,avg_price_sqm,min_price_sqm,max_price_sqm,source,assessment},search_windows:{location_scope,budget_searched,area_searched,land_searched},properties:[{name,address,location,distance_from_primary,price_total,price_sqm,area_sqm,land_sqm,rooms,floor,year_built,condition:"ready|renovate|developer|unknown",url,search_url,portal,listing_status:"active|archived|unknown",archive_note,match_score(1-10),within_preferences:{budget,area,land,location},rcn_vs_market:"fair|above|below",highlights:[],caveats:[]}],market_notes,search_queries_used[]}`;
 }
 
 function buildInspectPrompt(p){
@@ -574,21 +648,28 @@ LISTING TO INSPECT:
 - URL: ${p.url}
 - Known data: ${p.area_sqm}m², plot ${p.land_sqm||'n/a'}m², built ${p.year_built||'unknown'}, ${(p.price_total||0).toLocaleString('pl-PL')} PLN, condition: ${p.condition}
 - Status flag from search: ${p.listing_status||'unknown'}
-
+${p.listing_status==='archived'?`
+THIS LISTING IS ALREADY CONFIRMED ARCHIVED — do NOT waste a search verifying status.
+Just extract whatever price/area/year data you can find from cached/indexed content.
+Provide archive_note, set archived:true, and provide advisor_verdict on its calibration value.
+Skip the full material checklist.`:`
 STEP 1 — VERIFY LISTING STATUS:
-Search for this listing URL and check if it shows: "ogłoszenie archiwalne", "nieaktualne", 404, or redirect to a list page.
-Set archived:true if any of these are found. Set archived:false if the listing appears active.
+Open the listing URL. Check for these archive signals:
+- otodom: "Ogłoszenie archiwalne", "To ogłoszenie jest nieaktualne"
+- nieruchomosci-online: "Oferta nieaktualna", 404
+- gratka: "Ogłoszenie wygasło"
+- morizon: "Oferta archiwalna", "Ta oferta nie jest już dostępna"
+- olx: "To ogłoszenie jest już nieaktualne"
+- Agency sites: "sprzedane", "sold", "wynajęte"
+- Redirect to search page or 404 = archived
+Set archived:true if ANY signal found. Otherwise archived:false.
 
-STEP 2 — IF ARCHIVED:
-- Still extract whatever price/area/year data you can find
-- Provide archive_note explaining what you found
-- Set a realistic price_sqm if you found the original listing price
-- Skip the full checklist — just provide advisor_verdict explaining its calibration value
+IF ARCHIVED: extract price data, provide archive_note and advisor_verdict. Skip checklist.
 
-STEP 3 — IF ACTIVE:
-- Search for the specific listing, extract all material and structural data
+IF ACTIVE:
+- Extract all material and structural data from the listing
 - Search RCN transaction data for this street/area
-- Complete the full 10-item material checklist
+- Complete the full 10-item material checklist`}
 
 PHOTO REVIEW CHECKLIST (active listings only):
 - EXTERIOR WALLS: Material? (brick/silicate/ytong). Age indicators?
@@ -602,31 +683,962 @@ PHOTO REVIEW CHECKLIST (active listings only):
 - STRUCTURAL: Settlement, damp, structural issues?
 - PLOT: Shape, orientation, fencing, access?
 
-Return ONLY raw JSON:
-{"archived":boolean,"archive_note":"string|null","listing_details":{"full_address":"string","description_summary":"string","price_total":number|null,"price_sqm":number|null,"area_sqm":number|null,"land_sqm":number|null,"rooms":number|null,"floors":number|null,"year_built":number|null,"condition":"string","heating":"string","garage":"string","utilities":"string"},"rcn_comparison":{"area_avg_sqm":number|null,"area_min_sqm":number|null,"area_max_sqm":number|null,"verdict":"fair"|"above"|"below"|"unknown","notes":"string"},"material_score":number,"checklist":{"exterior_walls":{"score":"GOOD"|"WARN"|"BAD"|"UNKNOWN","detail":"string"},"roof":{"score":"GOOD"|"WARN"|"BAD"|"UNKNOWN","detail":"string"},"windows":{"score":"GOOD"|"WARN"|"BAD"|"UNKNOWN","detail":"string"},"insulation":{"score":"GOOD"|"WARN"|"BAD"|"UNKNOWN","detail":"string"},"heating":{"score":"GOOD"|"WARN"|"BAD"|"UNKNOWN","detail":"string"},"garage":{"score":"GOOD"|"WARN"|"BAD"|"UNKNOWN","detail":"string"},"electrical":{"score":"GOOD"|"WARN"|"BAD"|"UNKNOWN","detail":"string"},"plumbing":{"score":"GOOD"|"WARN"|"BAD"|"UNKNOWN","detail":"string"},"structural":{"score":"GOOD"|"WARN"|"BAD"|"UNKNOWN","detail":"string"},"plot":{"score":"GOOD"|"WARN"|"BAD"|"UNKNOWN","detail":"string"}},"photo_tips":["string"],"renovation_estimate":{"low_pln":number|null,"high_pln":number|null,"notes":"string"},"total_cost_estimate":{"low_pln":number|null,"high_pln":number|null},"advisor_verdict":"string","search_queries_used":["string"]}`;
+Return ONLY raw JSON matching this compact schema:
+{archived:bool,archive_note,listing_details:{full_address,description_summary,price_total,price_sqm,area_sqm,land_sqm,rooms,floors,year_built,condition,heating,garage,utilities},rcn_comparison:{area_avg_sqm,area_min_sqm,area_max_sqm,verdict:"fair|above|below|unknown",notes},material_score(0-100),checklist:{exterior_walls|roof|windows|insulation|heating|garage|electrical|plumbing|structural|plot:{score:"GOOD|WARN|BAD|UNKNOWN",detail}},photo_tips:[],renovation_estimate:{low_pln,high_pln,notes},total_cost_estimate:{low_pln,high_pln},advisor_verdict,search_queries_used[]}`;
 }
 
-/* ─── API loop ─── */
-async function agentLoop(prompt,logWrap='logWrap'){
+/* ─── API loop (portal-by-portal with per-portal checkpoints) ─── */
+/*
+ * Architecture:
+ *   - Search each portal individually (2-3 queries each)
+ *   - After each portal, show results + "Continue" checkpoint
+ *   - Collect all findings, then single Sonnet synthesis
+ *   - Fresh message context per portal (no cross-portal context bloat)
+ *
+ * Cost strategy:
+ *   - Haiku handles all web-search calls ($1/$5 per MTok)
+ *   - Sonnet for final synthesis only ($3/$15 per MTok)
+ *   - Fresh context per portal = no quadratic growth
+ *
+ * Timeout strategy:
+ *   - Each portal = 2-4 API calls (~15-30s total)
+ *   - Checkpoint between every portal
+ *   - No single connection chain exceeds ~30s
+ */
+const MODEL_SEARCH = 'claude-haiku-4-5-20251001';   // $1/$5 per MTok
+const MODEL_SYNTH  = 'claude-sonnet-4-20250514';     // $3/$15 per MTok
+const MAX_ITERS_PER_PORTAL = 4;
+const KEEP_FULL_RESULTS = 2;
+
+/* Portals searched in Phase 1 (listing collection) */
+const PORTALS = [
+  { id:'otodom',   name:'Otodom.pl',   site:'otodom.pl',   type:'portal', tier:'major', maxIters:5, note:'Largest Polish portal — deep search' },
+  { id:'olx',      name:'OLX.pl',      site:'olx.pl/nieruchomosci', type:'portal', tier:'major', maxIters:5, note:'Major classifieds — broad coverage' },
+  { id:'gratka',   name:'Gratka.pl',   site:'gratka.pl',   type:'portal', tier:'major', maxIters:5, note:'Wide coverage — many unique listings' },
+  { id:'morizon',  name:'Morizon.pl',  site:'morizon.pl',  type:'portal', tier:'major', maxIters:4, note:'Aggregator — cross-portal results' },
+  { id:'nol',      name:'Nieruchomości-online.pl', site:'nieruchomosci-online.pl', type:'portal', tier:'major', maxIters:4, note:'Detail-rich listings' },
+  { id:'domiporta',name:'Domiporta.pl', site:'domiporta.pl', type:'portal', tier:'minor', maxIters:3, note:'Secondary portal' },
+  { id:'tabela',   name:'TabelaOfert.pl', site:'tabelaofert.pl', type:'portal', tier:'minor', maxIters:3, note:'Developer listings' },
+  { id:'agencies', name:'Premium Agencies', site:null, type:'agencies', tier:'major', maxIters:5,
+    note:'MetroHouse, Freedom, Homfi, Strzelczyk, RE/MAX, Hamilton May, Lions Estate, Partners Intl, Vilea, NuxEstate, Prestige RE',
+    sites:['metrohouse.pl','freedom-nieruchomosci.pl','homfi.com','strzelczyk.pl','remax.pl','hamiltonmay.com','lionsestate.pl','partnersinternational.pl','vilea.pl','nuxestate.pl','prestige-real-estate.pl']
+  }
+];
+/* RCN searched per-listing in Phase 3 (after enrichment) */
+
+function trimOldSearchResults(msgs){
+  let rounds=0;
+  for(let i=msgs.length-1;i>=0;i--){
+    const m=msgs[i];if(m.role!=='assistant'||!Array.isArray(m.content))continue;
+    const hasSearch=m.content.some(b=>b.type==='web_search_tool_result'||
+      (b.type==='tool_result'&&b.tool_use_id));
+    if(!hasSearch)continue;
+    rounds++;
+    if(rounds>KEEP_FULL_RESULTS){
+      m.content=m.content.map(b=>{
+        if(b.type==='web_search_tool_result'){
+          const q=b.search_query||'(search)';
+          return{type:'text',text:`[Previous web search: "${q}" — results trimmed to save context]`};
+        }
+        return b;
+      });
+    }
+  }
+}
+
+/* Returns a promise that resolves when user clicks the continue button */
+function waitForPortal(logWrap, portalName, portalNote, listingsFound, searchTime, portalIdx, totalPortals){
+  return new Promise(resolve=>{
+    const id='cont_'+Date.now();
+    const wrap=document.getElementById(logWrap);
+    const row=document.createElement('div');
+    row.style.cssText='padding:.8rem 0;border-top:1px solid rgba(184,148,74,.1);margin-top:.5rem';
+    const pct=Math.round(((portalIdx+1)/totalPortals)*100);
+    row.innerHTML=`
+      <div style="display:flex;align-items:center;gap:.8rem;margin-bottom:.6rem">
+        <div style="flex:1;height:3px;background:rgba(250,248,244,.06);border-radius:2px;overflow:hidden">
+          <div style="width:${pct}%;height:100%;background:var(--gold);border-radius:2px;transition:width .4s"></div>
+        </div>
+        <span style="font-size:.62rem;color:rgba(250,248,244,.25);flex-shrink:0">${portalIdx+1}/${totalPortals}</span>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem">
+        <div>
+          <div style="font-size:.78rem;color:var(--cream);font-weight:500">${portalName} complete</div>
+          <div style="font-size:.65rem;color:rgba(250,248,244,.3)">${portalNote}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:.82rem;color:var(--gold);font-weight:500">${listingsFound} listing${listingsFound!==1?'s':''}</div>
+          <div style="font-size:.62rem;color:rgba(250,248,244,.25)">${searchTime}</div>
+        </div>
+      </div>
+      <button id="${id}" style="
+        width:100%;background:var(--gold);color:var(--ink);border:none;padding:.55rem 1.8rem;
+        font-family:var(--sans);font-size:.73rem;letter-spacing:.08em;
+        text-transform:uppercase;cursor:pointer;transition:opacity .15s
+      ">${portalIdx<totalPortals-1?'Continue → '+PORTALS[portalIdx+1]?.name:'Proceed to synthesis →'}</button>`;
+    wrap.appendChild(row);
+    row.scrollIntoView({behavior:'smooth',block:'nearest'});
+    document.getElementById(id).onclick=()=>{
+      row.querySelector('button').textContent='Loading…';
+      row.querySelector('button').disabled=true;
+      resolve();
+    };
+  });
+}
+
+/* ── API endpoint ──
+   Set HALCYON_API_URL to your Cloudflare Worker URL after deploying.
+   Falls back to /api/chat for local dev with Vercel. */
+const API_BASE_URL = window.HALCYON_API_URL || 'https://halcyon-api.YOUR_CF_SUBDOMAIN.workers.dev';
+const API_TIMEOUT_MS = 90000; /* Cloudflare Workers allow 30s CPU, but network can be slower — 90s safe margin */
+async function apiCall(model,msgs,tools,maxTok){
+  const payload={model,max_tokens:maxTok,messages:msgs};
+  if(tools)payload.tools=tools;
+  const ctrl=new AbortController();
+  const timer=setTimeout(()=>ctrl.abort(),API_TIMEOUT_MS);
+  try{
+    const res=await fetch(API_BASE_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:ctrl.signal});
+    clearTimeout(timer);
+    if(!res.ok){const e=await res.text();throw new Error(`${res.status}: ${e}`);}
+    return res.json();
+  }catch(err){
+    clearTimeout(timer);
+    if(err.name==='AbortError')throw new Error('Timeout — API call exceeded 90s');
+    throw err;
+  }
+}
+
+/* Build a portal-specific search prompt */
+function buildPortalPrompt(brief, portal){
+  const loc=brief.location||'Warsaw';
+  const pType=brief.propertyType||'house';
+  const bMin=brief.budgetMin||0;
+  const bMax=brief.budgetMax||0;
+  const aMin=brief.areaMin||0;
+  const aMax=brief.areaMax||0;
+  const radius=brief.radius||0;
+  const locDesc=radius>0?`${loc} and surrounding areas within ${radius}km`:loc;
+
+  if(portal.type==='agencies'){
+    const pTypePL=pType==='apartment'?'mieszkanie':'dom';
+    return `You are a real estate advisor. Search for ${pType} listings on PREMIUM AGENCY websites for ${locDesc}.
+Budget: ${bMin?bMin.toLocaleString():'?'}–${bMax?bMax.toLocaleString():'?'} PLN. Area: ${aMin}–${aMax} m².
+
+THOROUGH SEARCH — you have up to ${portal.maxIters} rounds. Search each agency group:
+1. Big chains: "${pTypePL} ${loc} sprzedaż (site:metrohouse.pl OR site:freedom-nieruchomosci.pl OR site:homfi.com)"
+2. Premium Warsaw: "${pTypePL} ${loc} (site:hamiltonmay.com OR site:lionsestate.pl OR site:strzelczyk.pl)"
+3. International/boutique: "${pType} sale ${loc} (site:partnersinternational.pl OR site:vilea.pl OR site:remax.pl)"
+4. Niche premium: "${pTypePL} ${loc} premium (site:nuxestate.pl OR site:prestige-real-estate.pl)"
+5. Price-focused: "${pTypePL} ${loc} ${bMax?Math.round(bMax/1000)+'k':''} PLN (site:metrohouse.pl OR site:strzelczyk.pl OR site:lionsestate.pl)"
+DO NOT stop after 2 queries. Search all groups.
+
+For EACH listing found, extract: name, address, location, price_total, price_sqm, area_sqm, land_sqm, rooms, year_built, condition, portal (agency name), listing_status (active/archived), url, highlights[], caveats[].
+Mark as archived if: "sprzedane","sold","wynajęte" or listing page returns 404/redirect.
+Return a JSON array of listings: [{name,location,price_total,...}]
+Return ONLY the JSON array, no markdown fences.`;
+  }
+
+  /* Regular portal */
+  const siteFilter=portal.site?`site:${portal.site}`:'';
+  const isMajor=portal.tier==='major';
+  const pTypePL=pType==='apartment'?'mieszkanie':'dom';
+
+  /* Major portals get 5-6 search angles; minor portals get 2-3 */
+  const searchAngles=isMajor
+    ?`THOROUGH SEARCH — you have up to ${portal.maxIters} search rounds. Use them all to maximize listings found.
+Try these search angles (one query per round):
+1. Broad: "${pTypePL} ${loc} sprzedaż ${siteFilter} -archiwalne 2026"
+2. Price-focused: "${pTypePL} ${loc} ${bMin?Math.round(bMin/1000)+'k':''}-${bMax?Math.round(bMax/1000)+'k':''} PLN ${siteFilter}"
+3. Area-focused: "${pTypePL} ${aMin}-${aMax}m2 ${loc} ${siteFilter}"
+${radius>0
+  ?`4. Radius: "${pTypePL} sprzedaż ${loc} okolice ${radius}km ${siteFilter}"
+5. Surrounding areas: "${pTypePL} okolice ${loc} ${siteFilter} -archiwalne"`
+  :`4. District-level: search specific districts of ${loc} one by one (e.g. Mokotów, Żoliborz, Wawer…)
+5. Sub-district: try neighbourhood-level search if main city returns too many results`}
+6. Unique angle: try different keyword combos — "nieruchomość ${loc}", "${pTypePL} na sprzedaż ${loc} wolnostojący/segment/bliźniak"
+DO NOT stop after 2-3 queries. Keep searching until you've exhausted your search budget or found 10+ listings.`
+    :`QUICK SEARCH — 2-3 queries max:
+1. "${pTypePL} ${loc} sprzedaż ${siteFilter} -archiwalne"
+2. "${pTypePL} ${loc} ${bMax?Math.round(bMax/1000)+'k':''} ${siteFilter} 2026"
+${radius>0?`3. "${pTypePL} sprzedaż ${loc} ${radius}km ${siteFilter}"`:`3. Try one district-level search if ${loc} is a city`}`;
+
+  return `You are a real estate advisor. Search for ALL available ${pType} listings on ${portal.name} for ${locDesc}.
+Budget: ${bMin?bMin.toLocaleString():'?'}–${bMax?bMax.toLocaleString():'?'} PLN. Area: ${aMin}–${aMax} m².
+
+${searchAngles}
+
+ARCHIVE SIGNALS for ${portal.name}:
+${portal.id==='otodom'?'- "Ogłoszenie archiwalne", "nieaktualne", URL not /pl/oferta/ pattern':''}
+${portal.id==='olx'?'- "To ogłoszenie jest już nieaktualne", "Ogłoszenie zakończone"':''}
+${portal.id==='gratka'?'- "Ogłoszenie wygasło", "nieaktualne", redirect to index':''}
+${portal.id==='morizon'?'- "Oferta archiwalna", "nie jest już dostępna"':''}
+${portal.id==='nol'?'- "Oferta nieaktualna", "archiwalna", HTTP 404':''}
+${portal.id==='domiporta'?'- "Oferta wygasła", 404 page':''}
+${portal.id==='tabela'?'- Check if listing is still on developer\'s active offer list':''}
+
+For EACH listing found, extract: name, address, location, price_total, price_sqm, area_sqm, land_sqm, rooms, year_built, condition(ready/renovate/developer/unknown), portal:"${portal.name}", listing_status(active/archived/unknown), url, highlights[], caveats[].
+Return a JSON array of ALL listings found: [{name,location,price_total,...}]
+Return ONLY the JSON array, no markdown fences.`;
+}
+
+/* Search a single portal — returns {listings, searchTime, queries} */
+const PORTAL_TIME_LIMIT_MS = 120000; // 2 min per portal — Cloudflare Workers have no strict wallclock limit
+async function searchPortal(brief, portal, logWrap){
+  const t0=performance.now();
+  const prompt=buildPortalPrompt(brief, portal);
   const msgs=[{role:'user',content:prompt}];
   const tools=[{type:'web_search_20250305',name:'web_search'}];
-  let i=0;
-  while(i++<14){
-    log(`API call ${i}…`,logWrap);
-    const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:4000,tools,messages:msgs})});
-    if(!res.ok){const e=await res.text();throw new Error(`${res.status}: ${e}`);}
-    const data=await res.json();
+  let iters=0;
+  const maxIters=portal.maxIters||MAX_ITERS_PER_PORTAL;
+  const queries=[];
+  let timedOut=false;
+
+  while(iters++<maxIters){
+    /* ── Time guard: if this portal has been running >90s, stop early ── */
+    if(performance.now()-t0>PORTAL_TIME_LIMIT_MS){
+      timedOut=true;
+      log(`<span style="color:#ef9f27">⏱ ${portal.name} time limit (90s) — collecting results…</span>`,logWrap);
+      break;
+    }
+    trimOldSearchResults(msgs);
+    let data;
+    try{
+      data=await apiCall(MODEL_SEARCH,msgs,tools,portal.type==='benchmark'?1024:768);
+    }catch(err){
+      if(err.message.includes('Timeout')){
+        log(`<span style="color:#ef9f27">⏱ ${portal.name} call timed out — collecting what we have…</span>`,logWrap);
+        timedOut=true;
+        break;
+      }
+      throw err;
+    }
     msgs.push({role:'assistant',content:data.content});
     const tus=data.content.filter(b=>b.type==='tool_use');
     const txts=data.content.filter(b=>b.type==='text');
-    if(tus.length){tus.forEach(tu=>{if(tu.name==='web_search')log(`Searching: <strong>"${tu.input?.query||'…'}"</strong>`,logWrap);});msgs.push({role:'user',content:tus.map(tu=>({type:'tool_result',tool_use_id:tu.id,content:'(executed)'}))});continue;}
-    if(data.stop_reason==='end_turn'&&txts.length){log('Parsing…',logWrap);return txts.map(b=>b.text).join('');}
+
+    if(tus.length){
+      tus.forEach(tu=>{
+        const q=tu.input?.query||'';
+        queries.push(q);
+        log(`<strong>${portal.name}</strong> → <em>"${q.slice(0,70)}${q.length>70?'…':''}"</em>`,logWrap);
+      });
+      msgs.push({role:'user',content:tus.map(tu=>({type:'tool_result',tool_use_id:tu.id,content:'(executed)'}))});
+      continue;
+    }
+    /* Model returned text — this is the result */
+    if(data.stop_reason==='end_turn'&&txts.length){
+      const raw=txts.map(b=>b.text).join('');
+      const elapsed=performance.now()-t0;
+      return{raw,elapsed,queries,iters,timedOut:false};
+    }
     break;
   }
-  throw new Error('No response');
+  /* Loop exhausted or timed out — ask for results */
+  let fd;
+  try{
+    msgs.push({role:'user',content:'Return the JSON now with all listings found so far. Return ONLY JSON, no markdown fences.'});
+    fd=await apiCall(MODEL_SEARCH,msgs,null,1024);
+  }catch(err){
+    /* Even the final collect call timed out — return empty */
+    const elapsed=performance.now()-t0;
+    return{raw:'[]',elapsed,queries,iters,timedOut:true};
+  }
+  const txts=fd.content.filter(b=>b.type==='text');
+  const elapsed=performance.now()-t0;
+  return{raw:txts.length?txts.map(b=>b.text).join(''):'[]',elapsed,queries,iters,timedOut};
+}
+
+/* Parse portal result — tolerant of various formats */
+function parsePortalResult(raw, portalType){
+  let t=raw.trim();
+  const f=t.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if(f)t=f[1].trim();
+  try{
+    const parsed=JSON.parse(t);
+    if(portalType==='benchmark') return{benchmark:parsed,listings:[]};
+    if(Array.isArray(parsed)) return{benchmark:null,listings:parsed};
+    if(parsed.properties) return{benchmark:parsed.benchmark||null,listings:parsed.properties};
+    if(parsed.district) return{benchmark:parsed,listings:[]};
+    return{benchmark:null,listings:[parsed]};
+  }catch(e){
+    /* Try to extract JSON array from text */
+    const arrMatch=t.match(/\[[\s\S]*\]/);
+    if(arrMatch){try{return{benchmark:null,listings:JSON.parse(arrMatch[0])};}catch{}}
+    const objMatch=t.match(/\{[\s\S]*\}/);
+    if(objMatch){try{const o=JSON.parse(objMatch[0]);return{benchmark:o.district?o:null,listings:o.district?[]:[o]};}catch{}}
+    return{benchmark:null,listings:[]};
+  }
+}
+
+/* ── Enrich a single listing by visiting its URL ── */
+async function enrichListing(listing, brief, logWrap){
+  const loc=brief.location||'Warsaw';
+  const pType=brief.propertyType||'house';
+  const url=listing.url||'';
+  const name=listing.name||'Unknown';
+
+  const prompt=`You are a real estate data analyst. Visit and verify this listing.
+
+LISTING: ${name}
+URL: ${url}
+Portal: ${listing.portal||'unknown'}
+Current data: price=${listing.price_total||'?'}, area=${listing.area_sqm||'?'}m², rooms=${listing.rooms||'?'}
+
+CLIENT REQUIREMENTS: ${pType} in ${loc}, budget ${brief.budgetMin||'?'}-${brief.budgetMax||'?'} PLN, area ${brief.areaMin||'?'}-${brief.areaMax||'?'} m².
+
+TASKS:
+1. Search for this exact listing: "${name} ${listing.portal||''} ${url?'':'sprzedaż '+loc}"
+2. Check if listing is ACTIVE or ARCHIVED (look for archive signals: "archiwalne", "nieaktualne", "sprzedane", 404, redirect)
+3. Extract ALL available details: full address, exact price, area, rooms, floor, year built, condition, heating, garage, description summary
+4. Assess match quality vs client brief (location match, budget match, area match)
+
+Return ONLY JSON:
+{verified:true/false,listing_status:"active"|"archived"|"unknown",name,full_address,location,price_total,price_sqm,area_sqm,land_sqm,rooms,floor,year_built,condition:"ready|renovate|developer|unknown",heating,garage,description_summary,url,portal,archive_note,match_assessment:{budget_ok:bool,area_ok:bool,location_ok:bool,overall:"strong|partial|weak"},highlights:[],caveats:[]}`;
+
+  const msgs=[{role:'user',content:prompt}];
+  const tools=[{type:'web_search_20250305',name:'web_search'}];
+  const t0=performance.now();
+
+  /* Allow up to 2 search rounds for enrichment */
+  for(let i=0;i<2;i++){
+    let data;
+    try{ data=await apiCall(MODEL_SEARCH,msgs,tools,768); }
+    catch(err){
+      if(err.message.includes('Timeout'))return{...listing,verified:false,enrich_error:'timeout'};
+      throw err;
+    }
+    msgs.push({role:'assistant',content:data.content});
+    const tus=data.content.filter(b=>b.type==='tool_use');
+    const txts=data.content.filter(b=>b.type==='text');
+    if(tus.length){
+      tus.forEach(tu=>{
+        const q=tu.input?.query||'';
+        log(`  → <em>"${q.slice(0,60)}${q.length>60?'…':''}"</em>`,logWrap);
+      });
+      msgs.push({role:'user',content:tus.map(tu=>({type:'tool_result',tool_use_id:tu.id,content:'(executed)'}))});
+      continue;
+    }
+    if(data.stop_reason==='end_turn'&&txts.length){
+      const raw=txts.map(b=>b.text).join('');
+      try{
+        let t=raw.trim();const f=t.match(/```(?:json)?\s*([\s\S]*?)```/);if(f)t=f[1].trim();
+        const enriched=JSON.parse(t);
+        enriched.verified=true;
+        enriched.enrich_time=Math.round((performance.now()-t0)/1000);
+        return enriched;
+      }catch(e){return{...listing,verified:false,enrich_error:'parse_error'};}
+    }
+  }
+  return{...listing,verified:false,enrich_error:'max_iters'};
+}
+
+/* ── Per-listing RCN benchmark (scrapes exact location data) ── */
+async function benchmarkListing(listing, logWrap){
+  const addr=listing.full_address||listing.address||listing.location||'';
+  const name=listing.name||'';
+  /* Build the most specific location string possible */
+  const parts=[];
+  if(addr)parts.push(addr);
+  else if(listing.location)parts.push(listing.location);
+  if(!parts.length)parts.push(name);
+  const locStr=parts.join(' ');
+
+  /* Extract district/street for targeted search */
+  const district=listing.location||addr.split(',')[0]||'';
+
+  const prompt=`You are a real estate data scraper. Find ACTUAL notarial transaction prices (RCN / Rejestr Cen Nieruchomości) for this EXACT location.
+
+LISTING LOCATION: ${locStr}
+DISTRICT: ${district}
+PROPERTY TYPE: ${listing.area_sqm>120||listing.land_sqm?'house/land':'apartment'}
+AREA: ${listing.area_sqm||'?'} m²
+
+SEARCH STRATEGY — be as specific as possible, one search at a time:
+1. "${district} ceny transakcji notarialnych 2024 2025 PLN/m2"
+2. "${district} średnia cena m2 ${listing.area_sqm>120?'dom':'mieszkanie'} 2024 2025"
+3. "${addr||district} RCN ceny nieruchomości"
+
+CRITICAL: Extract ONLY scraped/cited data from the search results. Do NOT generate or estimate prices.
+Look for:
+- Transaction price data from geoportal.gov.pl, cenyzamieszkanie.pl, rynekpierwotny.pl, bankier.pl, money.pl, oferty.net
+- Average m² prices for this specific district/street
+- Price trends (rising/falling/stable)
+- Number of transactions if available
+
+Return ONLY JSON (no markdown):
+{location:"${district}",avg_price_sqm:NUMBER_OR_NULL,min_price_sqm:NUMBER_OR_NULL,max_price_sqm:NUMBER_OR_NULL,median_price_sqm:NUMBER_OR_NULL,transactions_count:NUMBER_OR_NULL,period:"Q?_202?",trend:"rising|falling|stable|unknown",sources:[{name:"site name",url:"url",data_point:"what was found"}],confidence:"high|medium|low",notes:"any caveats"}`;
+
+  const msgs=[{role:'user',content:prompt}];
+  const tools=[{type:'web_search_20250305',name:'web_search'}];
+  const t0=performance.now();
+
+  /* 1 search round — one focused query per listing */
+  for(let i=0;i<2;i++){
+    let data;
+    try{ data=await apiCall(MODEL_SEARCH,msgs,tools,512); }
+    catch(err){
+      if(err.message.includes('Timeout'))return{location:district,error:'timeout'};
+      return{location:district,error:err.message};
+    }
+    msgs.push({role:'assistant',content:data.content});
+    const tus=data.content.filter(b=>b.type==='tool_use');
+    const txts=data.content.filter(b=>b.type==='text');
+    if(tus.length){
+      const q=tus[0]?.input?.query||'';
+      log(`  → RCN <em>"${q.slice(0,55)}${q.length>55?'…':''}"</em>`,logWrap);
+      msgs.push({role:'user',content:tus.map(tu=>({type:'tool_result',tool_use_id:tu.id,content:'(executed)'}))});
+      continue;
+    }
+    if(data.stop_reason==='end_turn'&&txts.length){
+      const raw=txts.map(b=>b.text).join('');
+      try{
+        let t=raw.trim();const f=t.match(/```(?:json)?\s*([\s\S]*?)```/);if(f)t=f[1].trim();
+        const bm=JSON.parse(t);
+        bm.scrape_time=Math.round((performance.now()-t0)/1000);
+        return bm;
+      }catch(e){return{location:district,error:'parse_error'};}
+    }
+  }
+  return{location:district,error:'max_iters'};
+}
+
+/* Show intermediate collection stats in the log */
+function showCollectionStats(listings, logWrap){
+  const total=listings.length;
+  const active=listings.filter(l=>l.listing_status==='active').length;
+  const archived=listings.filter(l=>l.listing_status==='archived').length;
+  const unknown=total-active-archived;
+  const withPrice=listings.filter(l=>l.price_total).length;
+  const prices=listings.filter(l=>l.price_total).map(l=>l.price_total);
+  const minP=prices.length?Math.min(...prices):0;
+  const maxP=prices.length?Math.max(...prices):0;
+  const areas=listings.filter(l=>l.area_sqm).map(l=>l.area_sqm);
+  const minA=areas.length?Math.min(...areas):0;
+  const maxA=areas.length?Math.max(...areas):0;
+  const portals=[...new Set(listings.map(l=>l.portal).filter(Boolean))];
+
+  const wrap=document.getElementById(logWrap);
+  const box=document.createElement('div');
+  box.style.cssText='background:rgba(184,148,74,.07);border:1px solid rgba(184,148,74,.2);padding:.8rem 1rem;margin:.6rem 0';
+  box.innerHTML=`
+    <div style="font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);margin-bottom:.6rem">Phase 1 — Collection complete</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem;margin-bottom:.5rem">
+      <div><div style="font-family:var(--serif);font-size:1.1rem;color:var(--cream)">${total}</div><div style="font-size:.55rem;text-transform:uppercase;color:rgba(250,248,244,.3)">Total found</div></div>
+      <div><div style="font-family:var(--serif);font-size:1.1rem;color:#5dcaa5">${active}</div><div style="font-size:.55rem;text-transform:uppercase;color:rgba(250,248,244,.3)">Active</div></div>
+      <div><div style="font-family:var(--serif);font-size:1.1rem;color:#c0392b">${archived}</div><div style="font-size:.55rem;text-transform:uppercase;color:rgba(250,248,244,.3)">Archived</div></div>
+      <div><div style="font-family:var(--serif);font-size:1.1rem;color:rgba(250,248,244,.4)">${unknown}</div><div style="font-size:.55rem;text-transform:uppercase;color:rgba(250,248,244,.3)">Unknown</div></div>
+    </div>
+    <div style="font-size:.68rem;color:rgba(250,248,244,.4);line-height:1.7">
+      ${withPrice?`Price range: <strong style="color:rgba(250,248,244,.7)">${minP.toLocaleString('pl-PL')} — ${maxP.toLocaleString('pl-PL')} PLN</strong>`:'No prices extracted yet'}
+      ${areas.length?` · Area: <strong style="color:rgba(250,248,244,.7)">${minA} — ${maxA} m²</strong>`:''}
+      <br>Sources: ${portals.join(', ')||'—'}
+    </div>`;
+  wrap.appendChild(box);
+  box.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+/* ── Preliminary score (client-side, before LLM synthesis) ── */
+function computePrelimScore(listing, brief){
+  let score=5; /* base */
+
+  /* Budget match */
+  const price=listing.price_total||0;
+  if(price && brief.budgetMax){
+    if(price<=brief.budgetMax && price>=brief.budgetMin) score+=2;
+    else if(price<=brief.budgetMax*1.1) score+=1;
+    else if(price>brief.budgetMax*1.2) score-=2;
+  }
+
+  /* Area match */
+  const area=listing.area_sqm||0;
+  if(area && brief.areaMin){
+    if(area>=brief.areaMin && area<=brief.areaMax) score+=1.5;
+    else if(area>=brief.areaMin*0.9) score+=0.5;
+    else score-=1;
+  }
+
+  /* RCN benchmark — below market is good */
+  const rcn=listing.rcn_vs_market;
+  if(rcn==='below') score+=1.5;
+  else if(rcn==='fair') score+=0.5;
+  else if(rcn==='above') score-=1;
+
+  /* Match assessment from enrichment */
+  const ma=listing.match_assessment?.overall;
+  if(ma==='strong') score+=1.5;
+  else if(ma==='partial') score+=0.5;
+  else if(ma==='weak') score-=1;
+
+  /* Active > unknown > archived */
+  if(listing.listing_status==='active') score+=1;
+  else if(listing.listing_status==='archived') score-=2;
+
+  /* Verified bonus */
+  if(listing.verified) score+=0.5;
+
+  /* RCN confidence bonus */
+  const conf=listing.rcn_benchmark?.confidence;
+  if(conf==='high') score+=0.5;
+  else if(conf==='low') score-=0.5;
+
+  return Math.max(1,Math.min(10,Math.round(score*10)/10));
+}
+
+/* ── Preliminary ranking display with user selection ── */
+function showPreliminaryRanking(listings, brief, benchmark, logWrap){
+  return new Promise(resolve=>{
+    /* Score and sort */
+    const scored=listings.map(l=>({...l,prelim_score:computePrelimScore(l,brief)}));
+    scored.sort((a,b)=>b.prelim_score-a.prelim_score);
+
+    const top5=scored.slice(0,5);
+    const rest=scored.slice(5);
+    const id='rank_'+Date.now();
+    const wrap=document.getElementById(logWrap);
+    const section=document.createElement('div');
+    section.style.cssText='padding:1rem 0;border-top:1px solid rgba(184,148,74,.15);margin-top:.5rem';
+
+    /* Format price */
+    const fmtP=v=>v?Math.round(v/1000).toLocaleString('pl-PL')+'k':'?';
+    const fmtPsqm=v=>v?v.toLocaleString('pl-PL'):'?';
+
+    /* Build card HTML for a listing */
+    function cardHTML(l, idx, isTop, checked){
+      const statusColor=l.listing_status==='active'?'#5dcaa5':l.listing_status==='archived'?'rgba(226,75,74,.7)':'rgba(250,248,244,.35)';
+      const rcnColor=l.rcn_vs_market==='below'?'#5dcaa5':l.rcn_vs_market==='above'?'#e24b4a':'var(--gold)';
+      const rcnAvg=l.rcn_benchmark?.avg_price_sqm;
+      const diff=rcnAvg&&l.price_sqm?Math.round(((l.price_sqm-rcnAvg)/rcnAvg)*100):null;
+      const matchColor=l.match_assessment?.overall==='strong'?'#5dcaa5':l.match_assessment?.overall==='partial'?'var(--gold)':'rgba(250,248,244,.35)';
+      const scoreBar=Math.round(l.prelim_score*10);
+
+      return `
+        <label style="display:block;padding:.65rem .8rem;background:rgba(250,248,244,${isTop?'.05':'.025'});border:1px solid rgba(${isTop?'184,148,74,.15':'250,248,244,.06'});margin-bottom:.35rem;cursor:pointer;transition:border-color .15s"
+          onmouseenter="this.style.borderColor='rgba(184,148,74,.35)'" onmouseleave="this.style.borderColor='rgba(${isTop?'184,148,74,.15':'250,248,244,.06'})'">
+          <div style="display:flex;align-items:center;gap:.6rem">
+            <input type="checkbox" name="${id}_sel" value="${idx}" ${checked?'checked':''} style="accent-color:var(--gold);width:14px;height:14px;flex-shrink:0"/>
+            <div style="flex:1;min-width:0">
+              <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.25rem">
+                <span style="font-family:var(--serif);font-size:.55rem;color:var(--gold);background:rgba(184,148,74,.1);padding:.1rem .4rem;border-radius:2px;flex-shrink:0">#${idx+1}</span>
+                <span style="font-family:var(--serif);font-size:.82rem;color:var(--cream);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${l.name||'Unknown'}</span>
+                <span style="font-size:.55rem;color:${statusColor};text-transform:uppercase;flex-shrink:0">${l.listing_status||'?'}</span>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:.3rem .8rem;font-size:.65rem;color:rgba(250,248,244,.45);line-height:1.7">
+                <span>📍 ${l.location||l.full_address||'?'}</span>
+                <span>💰 <strong style="color:rgba(250,248,244,.7)">${fmtP(l.price_total)} PLN</strong> · ${fmtPsqm(l.price_sqm)} /m²</span>
+                <span>📐 ${l.area_sqm||'?'} m²${l.rooms?' · '+l.rooms+'r':''}</span>
+                ${l.condition&&l.condition!=='unknown'?'<span>🔧 '+l.condition+'</span>':''}
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:.3rem .8rem;font-size:.6rem;color:rgba(250,248,244,.35);margin-top:.2rem;line-height:1.7">
+                ${l.rcn_vs_market?`<span>RCN: <strong style="color:${rcnColor}">${l.rcn_vs_market}</strong>${diff!==null?' ('+( diff>0?'+':'')+diff+'%)':''}</span>`:''}
+                ${rcnAvg?`<span>avg ${fmtPsqm(rcnAvg)} /m²</span>`:''}
+                ${l.rcn_benchmark?.confidence?`<span>conf: ${l.rcn_benchmark.confidence}</span>`:''}
+                ${l.match_assessment?.overall?`<span>match: <strong style="color:${matchColor}">${l.match_assessment.overall}</strong></span>`:''}
+              </div>
+            </div>
+            <div style="text-align:right;flex-shrink:0;min-width:40px">
+              <div style="font-family:var(--serif);font-size:1rem;color:var(--gold)">${l.prelim_score}</div>
+              <div style="width:40px;height:3px;background:rgba(250,248,244,.06);border-radius:2px;overflow:hidden;margin-top:.2rem">
+                <div style="width:${scoreBar}%;height:100%;background:var(--gold);border-radius:2px"></div>
+              </div>
+            </div>
+          </div>
+        </label>`;
+    }
+
+    let html=`
+      <div style="margin-bottom:.6rem">
+        <div style="font-family:var(--serif);font-size:.95rem;color:var(--cream);margin-bottom:.2rem">Preliminary ranking</div>
+        <div style="font-size:.6rem;color:rgba(250,248,244,.35)">Top 5 are pre-selected. Check additional listings you want included in the final deep analysis.</div>
+      </div>
+      <div style="margin-bottom:.3rem;font-size:.55rem;text-transform:uppercase;letter-spacing:.08em;color:var(--gold)">Top 5 — recommended</div>`;
+
+    top5.forEach((l,i)=>{ html+=cardHTML(l,i,true,true); });
+
+    if(rest.length){
+      html+=`<div style="margin-top:.6rem;margin-bottom:.3rem;font-size:.55rem;text-transform:uppercase;letter-spacing:.08em;color:rgba(250,248,244,.3)">Additional listings (${rest.length})</div>`;
+      rest.forEach((l,i)=>{ html+=cardHTML(l,i+5,false,false); });
+    }
+
+    html+=`
+      <div style="display:flex;gap:.5rem;margin-top:.7rem">
+        <button id="${id}_go" style="flex:1;background:var(--gold);color:var(--ink);border:none;padding:.55rem 1.8rem;font-family:var(--sans);font-size:.73rem;letter-spacing:.08em;text-transform:uppercase;cursor:pointer">Continue → final deep analysis</button>
+        <button id="${id}_all" style="background:transparent;color:rgba(250,248,244,.4);border:1px solid rgba(250,248,244,.1);padding:.55rem .8rem;font-family:var(--sans);font-size:.6rem;letter-spacing:.06em;text-transform:uppercase;cursor:pointer"
+          onmouseenter="this.style.borderColor='rgba(184,148,74,.3)'" onmouseleave="this.style.borderColor='rgba(250,248,244,.1)'">Select all</button>
+      </div>`;
+
+    section.innerHTML=html;
+    wrap.appendChild(section);
+    section.scrollIntoView({behavior:'smooth',block:'nearest'});
+
+    /* Select all button */
+    document.getElementById(id+'_all').onclick=()=>{
+      section.querySelectorAll('input[type=checkbox]').forEach(cb=>{cb.checked=true;});
+    };
+
+    /* Continue button */
+    document.getElementById(id+'_go').onclick=()=>{
+      const checks=section.querySelectorAll('input[name="'+id+'_sel"]:checked');
+      const selectedIdxs=Array.from(checks).map(cb=>parseInt(cb.value));
+      const selected=selectedIdxs.map(i=>scored[i]).filter(Boolean);
+
+      /* Disable UI */
+      document.getElementById(id+'_go').textContent='Loading…';
+      document.getElementById(id+'_go').disabled=true;
+      section.querySelectorAll('input[type=checkbox]').forEach(cb=>{cb.disabled=true;});
+
+      log(`✓ <strong>${selected.length} listings selected</strong> for final synthesis`,logWrap);
+      resolve(selected);
+    };
+  });
+}
+
+/* Checkpoint for enrichment phase */
+function waitForEnrichment(logWrap, enrichedCount, totalCount, activeCount, droppedCount){
+  return new Promise(resolve=>{
+    const id='enr_'+Date.now();
+    const wrap=document.getElementById(logWrap);
+    const row=document.createElement('div');
+    row.style.cssText='padding:.8rem 0;border-top:1px solid rgba(184,148,74,.1);margin-top:.5rem';
+    row.innerHTML=`
+      <div style="display:flex;align-items:center;gap:.8rem;margin-bottom:.5rem">
+        <div style="flex:1;height:3px;background:rgba(250,248,244,.06);border-radius:2px;overflow:hidden">
+          <div style="width:100%;height:100%;background:#5dcaa5;border-radius:2px"></div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-bottom:.6rem">
+        <div style="text-align:center"><div style="font-family:var(--serif);font-size:1rem;color:var(--cream)">${enrichedCount}/${totalCount}</div><div style="font-size:.55rem;text-transform:uppercase;color:rgba(250,248,244,.3)">Verified</div></div>
+        <div style="text-align:center"><div style="font-family:var(--serif);font-size:1rem;color:#5dcaa5">${activeCount}</div><div style="font-size:.55rem;text-transform:uppercase;color:rgba(250,248,244,.3)">Confirmed active</div></div>
+        <div style="text-align:center"><div style="font-family:var(--serif);font-size:1rem;color:#ef9f27">${droppedCount}</div><div style="font-size:.55rem;text-transform:uppercase;color:rgba(250,248,244,.3)">Archived / dropped</div></div>
+      </div>
+      <button id="${id}" style="width:100%;background:var(--gold);color:var(--ink);border:none;padding:.55rem 1.8rem;font-family:var(--sans);font-size:.73rem;letter-spacing:.08em;text-transform:uppercase;cursor:pointer">Continue → per-listing RCN benchmark & synthesis</button>`;
+    wrap.appendChild(row);
+    row.scrollIntoView({behavior:'smooth',block:'nearest'});
+    document.getElementById(id).onclick=()=>{
+      row.querySelector('button').textContent='Loading…';
+      row.querySelector('button').disabled=true;
+      resolve();
+    };
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MAIN SEARCH LOOP — 4 phases
+   Phase 1: Portal-by-portal listing collection
+   Phase 2: Enrich & verify each listing (visit URLs)
+   Phase 3: RCN benchmark search
+   Phase 4: Final synthesis (Sonnet)
+   ═══════════════════════════════════════════════════════════ */
+async function agentLoop(prompt,logWrap='logWrap'){
+  const brief=lastBrief;
+  const allListings=[];
+  let benchmark=null;
+  const portalStats=[];
+  let totalQueries=0;
+
+  /* ═══ PHASE 1: Portal-by-portal search ═══ */
+  log('<strong style="color:var(--gold)">Phase 1 — Listing collection</strong> · searching each portal individually',logWrap);
+
+  for(let pi=0;pi<PORTALS.length;pi++){
+    const portal=PORTALS[pi];
+    const icon=portal.type==='agencies'?'🏢':'🔍';
+    document.getElementById('panelSub').textContent=`Phase 1 · Portal ${pi+1}/${PORTALS.length}: ${portal.name}`;
+    log(`${icon} <strong>${portal.name}</strong> — ${portal.note}`,logWrap);
+
+    try{
+      const result=await searchPortal(brief,portal,logWrap);
+      const parsed=parsePortalResult(result.raw,portal.type);
+      const elapsed=Math.round(result.elapsed/1000);
+      const listCount=parsed.listings.length;
+
+      if(parsed.listings.length) allListings.push(...parsed.listings);
+      totalQueries+=result.queries.length;
+
+      const toTag=result.timedOut?' <span style="color:#ef9f27">⏱ timed out</span>':'';
+      portalStats.push({name:portal.name,listings:listCount,time:elapsed,queries:result.queries.length,iters:result.iters,timedOut:result.timedOut});
+      log(`✓ <strong>${listCount} listing${listCount!==1?'s':''}</strong> in ${elapsed}s (${result.queries.length} queries)${toTag}`,logWrap);
+
+      /* Checkpoint between portals */
+      if(pi<PORTALS.length-1){
+        const timeNote=`${elapsed}s · ${result.queries.length} queries${result.timedOut?' · timed out':''}`;
+        await waitForPortal(logWrap,portal.name,portal.note,listCount,timeNote,pi,PORTALS.length);
+      }
+    }catch(err){
+      log(`⚠ <span style="color:rgba(226,75,74,.7)">${portal.name} error: ${err.message}</span>`,logWrap);
+      portalStats.push({name:portal.name,listings:0,time:0,queries:0,error:err.message});
+      if(pi<PORTALS.length-1){
+        await waitForPortal(logWrap,portal.name,'Error — skipping',0,'failed',pi,PORTALS.length);
+      }
+    }
+  }
+
+  /* Show collection stats */
+  showCollectionStats(allListings, logWrap);
+
+  /* Checkpoint before enrichment */
+  await waitForPortal(logWrap,'All portals','Collection complete',allListings.length,`${totalQueries} searches across ${PORTALS.length} sources`,PORTALS.length-1,PORTALS.length);
+
+  /* ═══ PHASE 2: Enrich & verify each listing ═══ */
+  log('',logWrap);
+  document.getElementById('panelSub').textContent='Phase 2 · Enrichment & verification';
+  log('<strong style="color:var(--gold)">Phase 2 — Enrichment & verification</strong> · visiting each listing for details',logWrap);
+
+  /* Deduplicate before enriching (rough: same name+portal or same price+area) */
+  const seen=new Set();
+  const uniqueListings=allListings.filter(l=>{
+    const key=`${(l.name||'').slice(0,30).toLowerCase()}_${l.price_total||0}_${l.area_sqm||0}`;
+    if(seen.has(key))return false;
+    seen.add(key);return true;
+  });
+  const dupsRemoved=allListings.length-uniqueListings.length;
+  if(dupsRemoved>0)log(`Removed <strong>${dupsRemoved} duplicates</strong> — ${uniqueListings.length} unique listings to verify`,logWrap);
+
+  const enrichedListings=[];
+  let enrichActive=0, enrichArchived=0, enrichFailed=0;
+
+  for(let li=0;li<uniqueListings.length;li++){
+    const listing=uniqueListings[li];
+    const num=li+1;
+    const pct=Math.round((num/uniqueListings.length)*100);
+    document.getElementById('panelSub').textContent=`Phase 2 · Verifying ${num}/${uniqueListings.length}: ${(listing.name||'Listing').slice(0,30)}`;
+    log(`<span style="color:rgba(250,248,244,.25)">[${num}/${uniqueListings.length}]</span> <strong>${listing.name||'Listing'}</strong> <span style="color:rgba(250,248,244,.2)">· ${listing.portal||''} · ${listing.price_total?listing.price_total.toLocaleString('pl-PL')+' PLN':'no price'}</span>`,logWrap);
+
+    try{
+      const enriched=await enrichListing(listing, brief, logWrap);
+      enrichedListings.push(enriched);
+      const status=enriched.listing_status||'unknown';
+      const match=enriched.match_assessment?.overall||'?';
+      if(status==='active')enrichActive++;
+      if(status==='archived')enrichArchived++;
+      const statusColor=status==='active'?'#5dcaa5':status==='archived'?'#c0392b':'rgba(250,248,244,.4)';
+      const matchColor=match==='strong'?'#5dcaa5':match==='partial'?'#ef9f27':match==='weak'?'#f09595':'rgba(250,248,244,.4)';
+      log(`  <span style="color:${statusColor}">${status}</span> · match: <span style="color:${matchColor}">${match}</span>${enriched.enrich_time?' · '+enriched.enrich_time+'s':''}`,logWrap);
+    }catch(err){
+      enrichFailed++;
+      enrichedListings.push({...listing,verified:false,enrich_error:err.message});
+      log(`  <span style="color:rgba(226,75,74,.7)">⚠ failed: ${err.message}</span>`,logWrap);
+    }
+
+    /* Checkpoint every 5 listings */
+    if(num%5===0 && num<uniqueListings.length){
+      await waitForUser(logWrap, Math.ceil(num/5), num);
+    }
+  }
+
+  /* Enrichment summary + checkpoint */
+  await waitForEnrichment(logWrap, uniqueListings.length, allListings.length, enrichActive, enrichArchived+enrichFailed);
+
+  /* ═══ PHASE 3: Per-listing RCN Benchmark (exact locations) ═══ */
+  log('',logWrap);
+  document.getElementById('panelSub').textContent='Phase 3 · RCN Benchmark';
+  log('📊 <strong style="color:var(--gold)">Phase 3 — RCN Benchmark</strong> · per-listing notarial price scraping',logWrap);
+
+  /* Only benchmark active/unknown listings (skip archived) */
+  const toBenchmark=enrichedListings.filter(l=>l.listing_status!=='archived');
+  log(`Benchmarking ${toBenchmark.length} listings at their exact locations…`,logWrap);
+
+  /* Collect unique location benchmarks to avoid duplicate searches for same district */
+  const locationCache={};
+  let bmDone=0, bmSuccess=0, bmFailed=0;
+
+  for(const listing of toBenchmark){
+    const locKey=(listing.location||listing.full_address||listing.name||'').toLowerCase().replace(/[^a-ząćęłńóśźż0-9]/g,' ').replace(/\s+/g,' ').trim();
+    const shortKey=locKey.split(' ').slice(0,3).join(' ');
+
+    /* Reuse cached benchmark if same location prefix */
+    if(locationCache[shortKey]){
+      listing.rcn_benchmark=locationCache[shortKey];
+      listing.rcn_benchmark_cached=true;
+      bmDone++;
+      log(`  ♻ <strong>${listing.name?.slice(0,35)||'?'}</strong> — reusing ${shortKey} benchmark`,logWrap);
+      continue;
+    }
+
+    bmDone++;
+    document.getElementById('panelSub').textContent=`Phase 3 · Benchmarking ${bmDone}/${toBenchmark.length}: ${(listing.location||listing.name||'?').slice(0,25)}`;
+    log(`  📍 <strong>${listing.name?.slice(0,35)||'?'}</strong> — ${listing.location||listing.full_address||'?'}`,logWrap);
+
+    try{
+      const bm=await benchmarkListing(listing, logWrap);
+      listing.rcn_benchmark=bm;
+
+      if(bm.error){
+        bmFailed++;
+        log(`    ⚠ ${bm.error}`,logWrap);
+      }else{
+        bmSuccess++;
+        const avg=bm.avg_price_sqm;
+        const conf=bm.confidence||'?';
+        log(`    ✓ avg <strong>${avg?avg.toLocaleString('pl-PL')+' PLN/m²':'N/A'}</strong> · confidence: ${conf} · ${bm.sources?.length||0} sources`,logWrap);
+
+        /* Compare listing price vs benchmark */
+        if(avg && listing.price_sqm){
+          const diff=Math.round(((listing.price_sqm-avg)/avg)*100);
+          const verdict=diff<-10?'below':diff>10?'above':'fair';
+          listing.rcn_vs_market=verdict;
+          const vColor=verdict==='below'?'#5dcaa5':verdict==='above'?'#e24b4a':'var(--gold)';
+          log(`    📊 listing ${listing.price_sqm.toLocaleString('pl-PL')} vs avg ${avg.toLocaleString('pl-PL')} → <span style="color:${vColor}">${verdict} (${diff>0?'+':''}${diff}%)</span>`,logWrap);
+        }
+
+        /* Cache for reuse */
+        locationCache[shortKey]=bm;
+      }
+    }catch(err){
+      bmFailed++;
+      listing.rcn_benchmark={location:listing.location||'?',error:err.message};
+      log(`    ⚠ <span style="color:rgba(226,75,74,.7)">${err.message}</span>`,logWrap);
+    }
+
+    /* Checkpoint every 5 listings */
+    if(bmDone%5===0&&bmDone<toBenchmark.length){
+      log(`  — ${bmDone}/${toBenchmark.length} benchmarked (${bmSuccess} OK, ${bmFailed} failed) —`,logWrap);
+    }
+  }
+
+  log('',logWrap);
+  log(`✓ <strong>Benchmarking complete</strong>: ${bmSuccess} scraped, ${bmFailed} failed, ${Object.keys(locationCache).length} unique locations`,logWrap);
+
+  /* Build aggregate benchmark from per-listing data */
+  const allAvgs=enrichedListings.map(l=>l.rcn_benchmark?.avg_price_sqm).filter(Boolean);
+  if(allAvgs.length){
+    benchmark={
+      type:'per_listing_aggregate',
+      locations_scraped:Object.keys(locationCache).length,
+      overall_avg_sqm:Math.round(allAvgs.reduce((a,b)=>a+b,0)/allAvgs.length),
+      overall_min_sqm:Math.min(...allAvgs),
+      overall_max_sqm:Math.max(...allAvgs),
+      listings_benchmarked:bmSuccess,
+      listings_failed:bmFailed
+    };
+  }
+
+  /* ═══ PHASE 3.5: Preliminary ranking + user selection ═══ */
+  log('',logWrap);
+  document.getElementById('panelSub').textContent='Preliminary ranking · awaiting your selection';
+  log('🏆 <strong style="color:var(--gold)">Preliminary ranking</strong> · select listings for final deep analysis',logWrap);
+
+  const selectedListings=await showPreliminaryRanking(enrichedListings, brief, benchmark, logWrap);
+
+  /* ═══ PHASE 4: Final synthesis (Sonnet) ═══ */
+  log('',logWrap);
+  document.getElementById('panelSub').textContent=`Phase 4 · Final synthesis (${selectedListings.length} listings)`;
+  log(`<strong style="color:#ef9f27">Phase 4 — Final synthesis (Sonnet)</strong> · deep analysis of ${selectedListings.length} selected listings`,logWrap);
+
+  const synthPrompt=`You are a senior premium real estate advisor in Poland.
+
+CLIENT BRIEF:
+${prompt.split('CLIENT BRIEF:')[1]?.split('ARCHIVE FILTERING')[0]||'See listings below.'}
+
+USER-SELECTED LISTINGS WITH PER-LISTING RCN BENCHMARKS (${selectedListings.length} listings selected for deep analysis):
+${JSON.stringify(selectedListings)}
+
+Each listing has a "rcn_benchmark" field with scraped notarial transaction data for its EXACT location (district/street level).
+The benchmark includes: avg_price_sqm, min/max, sources[], confidence, trend.
+Some listings also have "rcn_vs_market" already computed (fair/above/below).
+
+AGGREGATE BENCHMARK: ${benchmark?JSON.stringify(benchmark):'Not available.'}
+
+TASKS:
+1. DEDUPLICATE: Merge any remaining duplicates. Keep the most complete data, note all portals.
+2. RANK: Score each property 1-10 based on brief match. Use enriched match_assessment + rcn_benchmark.
+3. BENCHMARK: For each listing, use its per-listing RCN data to determine fair/above/below. Cite the scraped source.
+4. SELECT: Return the top 5-8 best matches. Include 1-2 archived if found (for calibration).
+5. SEARCH URLS: For each listing, build a filtered otodom/olx search URL with ±5% price and ±10% area.
+6. HIGHLIGHTS: Use enriched data (condition, heating, garage) + RCN comparison for detailed highlights and caveats.
+
+Return ONLY raw JSON:
+{benchmark:{type:"per_listing",locations_scraped:N,overall_avg_sqm,overall_min_sqm,overall_max_sqm},search_windows:{location_scope,budget_searched,area_searched},properties:[{name,address,location,distance_from_primary,price_total,price_sqm,area_sqm,land_sqm,rooms,floor,year_built,condition:"ready|renovate|developer|unknown",url,search_url,portal,listing_status:"active|archived|unknown",archive_note,match_score(1-10),within_preferences:{budget,area,land,location},rcn_vs_market:"fair|above|below",rcn_local_avg:NUMBER,rcn_sources:[],rcn_confidence:"high|medium|low",highlights:[],caveats:[]}],market_notes,search_queries_used:[]}`;
+
+  const synthMsgs=[{role:'user',content:synthPrompt}];
+  const fd=await apiCall(MODEL_SYNTH,synthMsgs,null,4096);
+  const txts=fd.content.filter(b=>b.type==='text');
+  if(txts.length)return txts.map(b=>b.text).join('');
+  throw new Error('No response from synthesis');
 }
 
 function parseJSON(raw){let t=raw.trim();const f=t.match(/```(?:json)?\s*([\s\S]*?)```/);if(f)t=f[1].trim();return JSON.parse(t);}
+
+/* ─── archive URL pre-filter ─── */
+/* Catches listings the LLM missed — promotes to archived based on URL patterns */
+function autoDetectArchive(properties){
+  const archivePatterns=[
+    /\/archiwalne\//i, /\/archive\//i, /\/sold\//i, /\/sprzedane\//i,
+    /\/wynajet[ey]\//i, /\/rented\//i
+  ];
+  /* URLs that are clearly search/listing pages, not individual offers */
+  const listPagePatterns=[
+    /otodom\.pl\/pl\/wyniki\//i,
+    /otodom\.pl\/pl\/oferty\//i,          // plural = search page, singular /oferta/ = listing
+    /nieruchomosci-online\.pl\/szukaj/i,
+    /gratka\.pl\/nieruchomosci(?!\/ogłoszenie)/i,
+    /olx\.pl\/nieruchomosci(?!\/oferta)/i,
+    /morizon\.pl\/oferty\//i              // plural = search
+  ];
+  (properties||[]).forEach(p=>{
+    if(!p.url||p.listing_status==='archived')return;
+    const u=p.url;
+    if(archivePatterns.some(r=>r.test(u))){
+      p.listing_status='archived';
+      p.archive_note=p.archive_note||'URL contains archive/sold indicator — likely no longer active.';
+    }
+    if(listPagePatterns.some(r=>r.test(u))){
+      p.listing_status='archived';
+      p.archive_note=p.archive_note||'URL points to a search page, not an individual listing — original offer likely removed.';
+    }
+  });
+  return properties;
+}
+
+/* ─── fallback search URL builder ─── */
+/* If the LLM didn't provide a search_url, build one from listing data */
+function ensureSearchUrls(properties, brief){
+  const loc=brief?.location?.toLowerCase()||'';
+  /* Simple mapping of common Warsaw districts to otodom path segments */
+  const otodomPaths={
+    'wawer':'mazowieckie/warszawa/warszawa/warszawa/wawer',
+    'radość':'mazowieckie/warszawa/warszawa/warszawa/wawer',
+    'mokotów':'mazowieckie/warszawa/warszawa/warszawa/mokotow',
+    'żoliborz':'mazowieckie/warszawa/warszawa/warszawa/zoliborz',
+    'wilanów':'mazowieckie/warszawa/warszawa/warszawa/wilanow',
+    'ursynów':'mazowieckie/warszawa/warszawa/warszawa/ursynow',
+    'białołęka':'mazowieckie/warszawa/warszawa/warszawa/bialoleka',
+    'bemowo':'mazowieckie/warszawa/warszawa/warszawa/bemowo',
+    'praga':'mazowieckie/warszawa/warszawa/warszawa/praga-poludnie',
+    'ochota':'mazowieckie/warszawa/warszawa/warszawa/ochota',
+    'śródmieście':'mazowieckie/warszawa/warszawa/warszawa/srodmiescie',
+    'targówek':'mazowieckie/warszawa/warszawa/warszawa/targowek',
+    'konstancin':'mazowieckie/piaseczyński/konstancin-jeziorna',
+    'piaseczno':'mazowieckie/piaseczyński/piaseczno',
+    'łomianki':'mazowieckie/warszawski-zachodni/lomianki',
+    'warszawa':'mazowieckie/warszawa',
+    'warsaw':'mazowieckie/warszawa',
+    'kraków':'malopolskie/krakow',
+    'krakow':'malopolskie/krakow',
+    'wrocław':'dolnoslaskie/wroclaw',
+    'gdańsk':'pomorskie/gdansk',
+    'poznań':'wielkopolskie/poznan'
+  };
+  function findPath(){
+    for(const[k,v]of Object.entries(otodomPaths)){if(loc.includes(k))return v;}
+    return 'mazowieckie/warszawa';
+  }
+  const pType=brief?.propertyType==='apartment'?'mieszkanie':'dom';
+  (properties||[]).forEach(p=>{
+    if(p.search_url)return; // LLM already provided one
+    if(!p.price_total&&!p.area_sqm)return; // not enough data to build URL
+    const params=new URLSearchParams();
+    if(p.price_total){
+      params.set('priceMin',Math.round(p.price_total*0.95));
+      params.set('priceMax',Math.round(p.price_total*1.05));
+    }
+    if(p.area_sqm){
+      params.set('areaMin',Math.round(p.area_sqm*0.9));
+      params.set('areaMax',Math.round(p.area_sqm*1.1));
+    }
+    params.set('distanceRadius','0');
+    p.search_url=`https://www.otodom.pl/pl/wyniki/sprzedaz/${pType}/${findPath()}?${params.toString()}`;
+  });
+  return properties;
+}
 
 /* ─── render results ─── */
 let lastResults=null;
@@ -634,6 +1646,9 @@ function fmt(n){return n?Number(n).toLocaleString('pl-PL')+' PLN':'—';}
 function fmtSqm(n){return n?Number(n).toLocaleString('pl-PL')+' PLN/m²':'—';}
 
 function render(d){
+  /* Run archive pre-filter, then ensure search URLs exist */
+  d.properties=autoDetectArchive(d.properties);
+  d.properties=ensureSearchUrls(d.properties,lastBrief);
   lastResults=d;
   document.getElementById('loading').style.display='none';
   document.getElementById('results').style.display='block';
@@ -680,7 +1695,8 @@ function render(d){
       ${!archived&&p.caveats?.length?`<div class="pcard-cav">${p.caveats.map(c=>`⚠ ${c}`).join(' · ')}</div>`:''}
       <div class="pcard-foot">
         ${!archived?`<span class="badge ${bc}">${bl}</span>`:''}
-        ${p.url?`<a class="pcard-link" href="${p.url}" target="_blank">${archived?'View archived →':'Open listing →'}</a>`:''}
+        ${p.search_url?`<a class="pcard-link" href="${p.search_url}" target="_blank" title="Filtered portal search — should show this listing among 1-5 results">Find on ${p.portal||'portal'} →</a>`:''}
+        ${p.url?`<a class="pcard-link" href="${p.url}" target="_blank" style="opacity:${p.search_url?'.45':'1'};font-size:.6rem">${archived?'Direct link (may expire)':'Direct link →'}</a>`:''}
         <button class="${archived?'btn-calib':'inspect-btn'}" onclick="${archived?'runInspect('+idx+')':'runInspect('+idx+')'}" style="${archived?'':'margin-left:auto'}">${archived?'Full inspection →':'Inspect →'}</button>
       </div>`;
     cl.appendChild(el);
@@ -689,6 +1705,214 @@ function render(d){
   const mn=d.market_notes;const nb=document.getElementById('notesBox');
   if(mn){nb.style.display='block';nb.innerHTML=`<div class="notes-lbl">Advisor notes</div><div class="notes-txt">${mn}</div>`;}
   document.getElementById('rawOut').textContent=JSON.stringify(d,null,2);
+
+  /* ── Map & location stats ── */
+  try{initMap(d.properties);buildLocStats(d.properties,d.benchmark);}catch(e){console.warn('Map init error:',e);}
+}
+
+/* ─── MAP & LOCATION STATS ─── */
+let hMap=null;
+const DISTRICT_COORDS={
+  /* Warsaw districts */
+  'wawer':[52.210,21.150],'radość':[52.214,21.167],'falenica':[52.190,21.157],
+  'mokotów':[52.195,21.005],'żoliborz':[52.270,20.983],'wilanów':[52.165,21.070],
+  'ursynów':[52.155,21.045],'białołęka':[52.320,21.005],'bemowo':[52.250,20.900],
+  'praga-południe':[52.240,21.080],'praga północ':[52.260,21.040],'praga':[52.250,21.060],
+  'ochota':[52.215,20.975],'śródmieście':[52.230,21.010],'targówek':[52.285,21.060],
+  'bielany':[52.290,20.935],'wola':[52.240,20.960],'ursus':[52.190,20.890],
+  'włochy':[52.190,20.930],'rembertów':[52.255,21.180],'wesoła':[52.250,21.220],
+  /* Suburbs */
+  'konstancin':[52.085,21.100],'konstancin-jeziorna':[52.085,21.100],
+  'piaseczno':[52.080,21.020],'łomianki':[52.330,20.890],'józefosław':[52.120,21.040],
+  'legionowo':[52.400,20.930],'ząbki':[52.290,21.115],'marki':[52.310,21.105],
+  'otwock':[52.105,21.265],'kobyłka':[52.335,21.185],'zielonka':[52.310,21.155],
+  'sulejówek':[52.245,21.275],'milanówek':[52.130,20.680],'podkowa leśna':[52.120,20.720],
+  'grodzisk mazowiecki':[52.110,20.630],'pruszków':[52.170,20.805],
+  'piastów':[52.190,20.840],'michałowice':[52.145,20.870],
+  /* Major cities */
+  'warszawa':[52.230,21.010],'warsaw':[52.230,21.010],
+  'kraków':[50.065,19.945],'krakow':[50.065,19.945],
+  'wrocław':[51.110,17.030],'gdańsk':[54.352,18.647],
+  'poznań':[52.407,16.930],'łódź':[51.760,19.455],
+  'katowice':[50.265,19.025],'lublin':[51.248,22.568],
+  'szczecin':[53.430,14.550],'sopot':[54.440,18.560],'gdynia':[54.520,18.530]
+};
+
+function geocodeProperty(p){
+  const loc=(p.location||p.address||'').toLowerCase();
+  /* Try exact match first, then partial */
+  for(const[k,v]of Object.entries(DISTRICT_COORDS)){
+    if(loc.includes(k))return{lat:v[0]+Math.random()*.008-.004,lng:v[1]+Math.random()*.008-.004,matched:k};
+  }
+  /* Fallback: central Warsaw with offset */
+  return{lat:52.23+Math.random()*.03-.015,lng:21.01+Math.random()*.03-.015,matched:'warsaw (approx)'};
+}
+
+function initMap(properties){
+  const section=document.getElementById('mapSection');
+  section.style.display='block';
+
+  /* Destroy previous map */
+  if(hMap){hMap.remove();hMap=null;}
+
+  hMap=L.map('mapContainer',{
+    zoomControl:true,
+    scrollWheelZoom:true,
+    attributionControl:true
+  }).setView([52.23,21.01],11);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    attribution:'&copy; OpenStreetMap',
+    maxZoom:18
+  }).addTo(hMap);
+
+  const bounds=[];
+  const gold='#b8944a', green='#5dcaa5', red='#c0392b';
+
+  (properties||[]).forEach((p,i)=>{
+    const geo=geocodeProperty(p);
+    const archived=p.listing_status==='archived';
+    const color=archived?red:p.rcn_vs_market==='below'?green:gold;
+
+    const icon=L.divIcon({
+      className:'',
+      html:`<div style="
+        width:28px;height:28px;border-radius:50%;
+        background:${color};border:2px solid rgba(255,255,255,.9);
+        display:flex;align-items:center;justify-content:center;
+        font-family:var(--sans);font-size:11px;font-weight:600;color:#fff;
+        box-shadow:0 2px 8px rgba(0,0,0,.4);
+        ${archived?'opacity:.6':''}
+      ">${i+1}</div>`,
+      iconSize:[28,28],iconAnchor:[14,14]
+    });
+
+    const marker=L.marker([geo.lat,geo.lng],{icon}).addTo(hMap);
+    const priceStr=p.price_total?Number(p.price_total).toLocaleString('pl-PL')+' PLN':'—';
+    const sqmStr=p.price_sqm?Number(p.price_sqm).toLocaleString('pl-PL')+' PLN/m²':'';
+    marker.bindPopup(`
+      <div style="font-family:var(--sans);min-width:180px">
+        <div style="font-family:var(--serif);font-size:14px;margin-bottom:4px;${archived?'text-decoration:line-through;opacity:.6':''}">${p.name||'Listing '+(i+1)}</div>
+        <div style="font-size:12px;color:#666;margin-bottom:6px">${p.location||''}</div>
+        <div style="font-size:14px;font-weight:500;color:${color}">${priceStr}</div>
+        ${sqmStr?`<div style="font-size:11px;color:#888">${sqmStr}</div>`:''}
+        <div style="margin-top:6px;font-size:11px">
+          ${p.area_sqm?p.area_sqm+'m²':''}${p.rooms?' · '+p.rooms+' rooms':''}
+        </div>
+        ${archived?'<div style="margin-top:6px;font-size:11px;color:#c0392b">Archived listing</div>':''}
+      </div>
+    `,{maxWidth:250});
+
+    bounds.push([geo.lat,geo.lng]);
+  });
+
+  if(bounds.length>1){
+    hMap.fitBounds(bounds,{padding:[40,40],maxZoom:14});
+  } else if(bounds.length===1){
+    hMap.setView(bounds[0],13);
+  }
+
+  /* Force a redraw after panel animation */
+  setTimeout(()=>{hMap.invalidateSize();},300);
+}
+
+function buildLocStats(properties,benchmark){
+  const groups={};
+  (properties||[]).forEach(p=>{
+    const loc=p.location||'Unknown';
+    if(!groups[loc])groups[loc]={name:loc,listings:[],active:0,archived:0,prices:[],pricesSqm:[]};
+    const g=groups[loc];
+    g.listings.push(p);
+    if(p.listing_status==='archived')g.archived++;else g.active++;
+    if(p.price_total)g.prices.push(p.price_total);
+    if(p.price_sqm)g.pricesSqm.push(p.price_sqm);
+  });
+
+  const locs=Object.values(groups).sort((a,b)=>b.listings.length-a.listings.length);
+  const maxListings=Math.max(...locs.map(l=>l.listings.length),1);
+  const bmAvg=benchmark?.avg_price_sqm||0;
+
+  let html=`<div class="loc-stats-title">Location breakdown — ${locs.length} area${locs.length!==1?'s':''} found</div><div class="loc-grid">`;
+
+  locs.forEach(loc=>{
+    const avgSqm=loc.pricesSqm.length?Math.round(loc.pricesSqm.reduce((s,v)=>s+v,0)/loc.pricesSqm.length):0;
+    const minPrice=loc.prices.length?Math.min(...loc.prices):0;
+    const maxPrice=loc.prices.length?Math.max(...loc.prices):0;
+    const vsBm=bmAvg&&avgSqm?((avgSqm/bmAvg-1)*100).toFixed(0):null;
+    const vsBmColor=vsBm>5?'#ef9f27':vsBm<-5?'#5dcaa5':'rgba(250,248,244,.4)';
+    const vsBmLabel=vsBm>0?'+'+vsBm+'%':vsBm+'%';
+
+    html+=`<div class="loc-card">
+      <div class="loc-card-name">${loc.name}</div>
+      <div style="margin-bottom:.4rem">
+        ${loc.active?`<span class="loc-badge active">${loc.active} active</span>`:''}
+        ${loc.archived?`<span class="loc-badge archived">${loc.archived} archived</span>`:''}
+      </div>
+      <div class="loc-card-row"><span>Avg PLN/m²</span><strong>${avgSqm?avgSqm.toLocaleString('pl-PL'):'—'}</strong></div>
+      ${vsBm!==null?`<div class="loc-card-row"><span>vs RCN benchmark</span><strong style="color:${vsBmColor}">${vsBmLabel}</strong></div>`:''}
+      <div class="loc-card-row"><span>Price range</span><strong>${minPrice?minPrice.toLocaleString('pl-PL'):'—'} — ${maxPrice?maxPrice.toLocaleString('pl-PL'):'—'}</strong></div>
+      <div class="loc-card-bar"><div class="loc-card-fill" style="width:${Math.round(loc.listings.length/maxListings*100)}%"></div></div>
+    </div>`;
+  });
+
+  html+=`</div>`;
+  document.getElementById('locStats').innerHTML=html;
+}
+
+function showMapView(view){
+  const tabs=document.querySelectorAll('.map-tab');
+  tabs.forEach((t,i)=>{t.classList.toggle('active',i===(view==='map'?0:1));});
+  document.getElementById('mapContainer').style.display=view==='map'?'block':'none';
+  document.getElementById('locStats').style.display=view==='stats'?'block':'none';
+  if(view==='map'&&hMap)setTimeout(()=>hMap.invalidateSize(),50);
+}
+
+/* ─── Lightweight inspect loop — Haiku only, user checkpoint after 2 calls ─── */
+/* Simple checkpoint for inspect loops */
+function waitForUser(logWrap,stageNum,totalSearches){
+  return new Promise(resolve=>{
+    const id='cont_'+Date.now();
+    const wrap=document.getElementById(logWrap);
+    const row=document.createElement('div');
+    row.style.cssText='text-align:center;padding:.6rem 0';
+    row.innerHTML=`<div style="font-size:.68rem;color:rgba(250,248,244,.3);margin-bottom:.4rem">Stage ${stageNum} — ${totalSearches} searches</div>
+      <button id="${id}" style="background:var(--gold);color:var(--ink);border:none;padding:.45rem 1.4rem;font-family:var(--sans);font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;cursor:pointer">Continue →</button>`;
+    wrap.appendChild(row);
+    row.scrollIntoView({behavior:'smooth',block:'nearest'});
+    document.getElementById(id).onclick=()=>{row.innerHTML=`<div style="font-size:.65rem;color:rgba(250,248,244,.2);padding:.2rem 0">Continuing…</div>`;resolve();};
+  });
+}
+
+async function inspectLoop(prompt,logWrap='logWrap'){
+  const msgs=[{role:'user',content:prompt}];
+  const tools=[{type:'web_search_20250305',name:'web_search'}];
+  let i=0, stageIters=0;
+  while(i++<5){
+    if(stageIters>=2){
+      await waitForUser(logWrap,1,i-1);
+      stageIters=0;
+    }
+    log(`Inspect call ${i} (Haiku)…`,logWrap);
+    trimOldSearchResults(msgs);
+    const data=await apiCall(MODEL_SEARCH,msgs,tools,i<5?512:3000);
+    msgs.push({role:'assistant',content:data.content});
+    const tus=data.content.filter(b=>b.type==='tool_use');
+    const txts=data.content.filter(b=>b.type==='text');
+    if(tus.length){
+      tus.forEach(tu=>{if(tu.name==='web_search')log(`Searching: <strong>"${tu.input?.query||'…'}"</strong>`,logWrap);});
+      msgs.push({role:'user',content:tus.map(tu=>({type:'tool_result',tool_use_id:tu.id,content:'(executed)'}))});
+      stageIters++;
+      continue;
+    }
+    if(data.stop_reason==='end_turn'&&txts.length){log('Done.',logWrap);return txts.map(b=>b.text).join('');}
+    break;
+  }
+  /* If loop exhausted, ask for final answer */
+  msgs.push({role:'user',content:'Return the JSON now.'});
+  const fd=await apiCall(MODEL_SEARCH,msgs,null,3000);
+  const txts=fd.content.filter(b=>b.type==='text');
+  if(txts.length)return txts.map(b=>b.text).join('');
+  throw new Error('No response from inspect');
 }
 
 /* ─── quick calibration from card (no full inspect) ─── */
@@ -700,8 +1924,8 @@ async function quickCalib(idx){
     addCalib(p,null);
     if(btn){btn.textContent='✓ Added';btn.style.background='rgba(26,122,94,.3)';}
   } else {
-    // Run sub-agent briefly
-    try{const raw=await agentLoop(buildInspectPrompt(p),'logWrap');const d=parseJSON(raw);addCalib(p,d);if(btn){btn.textContent='✓ Added';btn.style.background='rgba(26,122,94,.3)';}}
+    // Run sub-agent briefly — uses cheap inspectLoop
+    try{const raw=await inspectLoop(buildInspectPrompt(p),'logWrap');const d=parseJSON(raw);addCalib(p,d);if(btn){btn.textContent='✓ Added';btn.style.background='rgba(26,122,94,.3)';}}
     catch(e){if(btn){btn.textContent='Failed';btn.disabled=false;}}
   }
 }
@@ -717,7 +1941,7 @@ async function runInspect(idx){
   document.getElementById('inspectSub').textContent='Sub-agent — checking availability & analysing';
   document.getElementById('inspectTitle').textContent=p.name||'Listing inspection';
   try{
-    const raw=await agentLoop(buildInspectPrompt(p),'inspectLogWrap');
+    const raw=await inspectLoop(buildInspectPrompt(p),'inspectLogWrap');
     const d=parseJSON(raw);_inspectResult=d;renderInspect(p,d);
   }catch(err){
     document.getElementById('inspectLoading').style.display='none';
@@ -845,6 +2069,7 @@ async function runSearch(e){
   document.getElementById('panelSub').textContent='Searching…';
   document.getElementById('panelTitle').textContent='Live market search';
   const b=brief();
+  lastBrief=b; // store for search URL fallback builder
   log(`<strong>${b.propertyType}</strong> · <strong>${b.location||'location not set'}</strong>${b.radius>0?' + '+b.radius+'km radius':''}`);
   log(`Budget: ${isLocked('budget')&&b.hardBudget?'<strong>LOCKED</strong>':'±30% flexible'} · Area: ${isLocked('area')?'<strong>LOCKED</strong>':'±30% flexible'}`);
   log('Searching — active listings only, archiving flagged separately…');

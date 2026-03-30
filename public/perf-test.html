@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Halcyon — Backend Performance Test</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--ink:#0c0d10;--gold:#b8944a;--cream:#faf8f4;--sans:'DM Sans',system-ui,sans-serif;--serif:'Cormorant Garamond',Georgia,serif}
+body{font-family:var(--sans);background:var(--ink);color:var(--cream);padding:2rem;max-width:900px;margin:0 auto}
+h1{font-family:var(--serif);font-weight:300;font-size:1.6rem;margin-bottom:.3rem}
+.sub{font-size:.65rem;letter-spacing:.16em;text-transform:uppercase;color:var(--gold);margin-bottom:2rem}
+.config{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem;padding:1.2rem;background:rgba(250,248,244,.04);border:1px solid rgba(184,148,74,.15)}
+.config label{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--gold);display:block;margin-bottom:.3rem}
+.config input,.config select{width:100%;background:rgba(250,248,244,.06);border:1px solid rgba(250,248,244,.1);color:var(--cream);padding:.5rem .7rem;font-family:var(--sans);font-size:.85rem}
+.config input:focus,.config select:focus{outline:none;border-color:var(--gold)}
+.run-btn{background:var(--gold);color:var(--ink);border:none;padding:.7rem 2rem;font-family:var(--sans);font-size:.78rem;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;margin-bottom:1.5rem;transition:opacity .15s}
+.run-btn:hover{opacity:.85}
+.run-btn:disabled{opacity:.4;cursor:not-allowed}
+.summary{display:grid;grid-template-columns:repeat(5,1fr);gap:.8rem;margin-bottom:1.5rem}
+.sbox{padding:.8rem;border:1px solid rgba(184,148,74,.2);background:rgba(184,148,74,.05)}
+.sbox-val{font-family:var(--serif);font-size:1.4rem;font-weight:300;color:var(--cream)}
+.sbox-lbl{font-size:.58rem;text-transform:uppercase;letter-spacing:.08em;color:rgba(250,248,244,.35);margin-top:.15rem}
+#timeline{margin-bottom:1.5rem}
+.tl-row{display:grid;grid-template-columns:32px 1fr 80px 80px;gap:.6rem;padding:.45rem .6rem;border-bottom:1px solid rgba(250,248,244,.04);font-size:.78rem;align-items:center}
+.tl-row.hd{color:var(--gold);font-size:.62rem;text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid rgba(184,148,74,.2);padding-bottom:.6rem}
+.tl-idx{color:rgba(250,248,244,.25);text-align:center}
+.tl-desc{color:rgba(250,248,244,.6)}
+.tl-desc strong{color:var(--cream)}
+.tl-time{color:var(--gold);text-align:right;font-variant-numeric:tabular-nums}
+.tl-cost{color:rgba(250,248,244,.35);text-align:right;font-variant-numeric:tabular-nums}
+.bar-wrap{height:6px;background:rgba(250,248,244,.05);margin-top:.3rem;border-radius:3px;overflow:hidden}
+.bar{height:100%;border-radius:3px;transition:width .4s ease}
+#log{margin-top:1rem;padding:1rem;background:rgba(0,0,0,.4);max-height:300px;overflow-y:auto;font-size:.72rem;color:rgba(250,248,244,.35);line-height:1.7;white-space:pre-wrap}
+.tag-search{color:#5dcaa5}.tag-synth{color:#ef9f27}.tag-err{color:#f09595}
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+</head>
+<body>
+
+<div class="sub">Performance measurement</div>
+<h1>Backend perf test</h1>
+<p style="font-size:.8rem;color:rgba(250,248,244,.4);margin-bottom:1.5rem;line-height:1.7">Fires a real search through /api/chat and measures per-call latency, token usage, and estimated cost. No user checkpoints — runs the full loop automatically.</p>
+
+<div class="config">
+  <div>
+    <label>Location</label>
+    <input id="cfgLoc" value="Warsaw, Wawer, Radość"/>
+  </div>
+  <div>
+    <label>Property type</label>
+    <select id="cfgType">
+      <option value="house">House</option>
+      <option value="apartment">Apartment</option>
+    </select>
+  </div>
+  <div>
+    <label>Budget range (PLN)</label>
+    <input id="cfgBudget" value="1200000 - 1800000"/>
+  </div>
+  <div>
+    <label>Area range (m²)</label>
+    <input id="cfgArea" value="120 - 180"/>
+  </div>
+  <div>
+    <label>Max search iterations</label>
+    <input id="cfgMaxIter" type="number" value="6" min="1" max="12"/>
+  </div>
+  <div>
+    <label>Search model</label>
+    <select id="cfgSearchModel">
+      <option value="claude-haiku-4-5-20251001">Haiku 4.5 ($1/$5 MTok)</option>
+      <option value="claude-sonnet-4-20250514">Sonnet 4 ($3/$15 MTok)</option>
+    </select>
+  </div>
+  <div>
+    <label>Synthesis model</label>
+    <select id="cfgSynthModel">
+      <option value="claude-sonnet-4-20250514">Sonnet 4 ($3/$15 MTok)</option>
+      <option value="claude-haiku-4-5-20251001">Haiku 4.5 ($1/$5 MTok)</option>
+    </select>
+  </div>
+  <div>
+    <label>Max tokens (search / synth)</label>
+    <input id="cfgTokens" value="512 / 4096"/>
+  </div>
+</div>
+
+<button class="run-btn" id="runBtn" onclick="runTest()">Run performance test</button>
+
+<div class="summary" id="summaryBox" style="display:none">
+  <div class="sbox"><div class="sbox-val" id="sTotalTime">—</div><div class="sbox-lbl">Total time</div></div>
+  <div class="sbox"><div class="sbox-val" id="sApiCalls">—</div><div class="sbox-lbl">API calls</div></div>
+  <div class="sbox"><div class="sbox-val" id="sAvgLatency">—</div><div class="sbox-lbl">Avg latency</div></div>
+  <div class="sbox"><div class="sbox-val" id="sTokens">—</div><div class="sbox-lbl">Total tokens</div></div>
+  <div class="sbox"><div class="sbox-val" id="sCost">—</div><div class="sbox-lbl">Est. cost</div></div>
+</div>
+
+<div id="timeline"></div>
+<div id="log" style="display:none"></div>
+
+<script>
+const PRICING = {
+  'claude-haiku-4-5-20251001':  { input: 1/1e6, output: 5/1e6 },
+  'claude-sonnet-4-20250514':   { input: 3/1e6, output: 15/1e6 },
+};
+
+let logEl, timelineEl;
+
+function logMsg(msg, cls='') {
+  const ts = new Date().toISOString().slice(11,23);
+  logEl.textContent += `[${ts}] ${msg}\n`;
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function parseBudget(s) {
+  const m = s.match(/(\d[\d\s]*)\s*-\s*(\d[\d\s]*)/);
+  if (!m) return [1200000, 1800000];
+  return [parseInt(m[1].replace(/\s/g,'')), parseInt(m[2].replace(/\s/g,''))];
+}
+function parseArea(s) {
+  const m = s.match(/(\d+)\s*-\s*(\d+)/);
+  if (!m) return [120, 180];
+  return [parseInt(m[1]), parseInt(m[2])];
+}
+function parseTokenLimits(s) {
+  const m = s.match(/(\d+)\s*\/\s*(\d+)/);
+  if (!m) return [512, 4096];
+  return [parseInt(m[1]), parseInt(m[2])];
+}
+
+function buildTestPrompt(loc, pType, budget, area) {
+  return `You are a senior premium real estate advisor in Poland.
+
+CLIENT BRIEF:
+- Location: "${loc}" — adjacent districts fine.
+- Type: ${pType}
+- Floor area: ${area[0]}–${area[1]} m² (preferred)
+- Budget: ${budget[0].toLocaleString()}–${budget[1].toLocaleString()} PLN (preferred)
+
+ARCHIVE FILTERING: Append "-archiwalne -nieaktualne" to search queries. Mark any archived listing with listing_status:"archived".
+
+TASKS:
+1. Search portals: otodom.pl, nieruchomosci-online.pl, gratka.pl, olx.pl
+2. Check RCN benchmarks: "ceny nieruchomości ${loc} 2025 2026 transakcje notarialne"
+3. Return 3–5 listings with status labels
+Note: use 3-4 broad queries max to stay efficient.
+
+Return ONLY raw JSON:
+{benchmark:{district,avg_price_sqm,min_price_sqm,max_price_sqm,source,assessment},properties:[{name,location,price_total,price_sqm,area_sqm,rooms,url,search_url,portal,listing_status:"active|archived|unknown",rcn_vs_market:"fair|above|below",highlights:[],caveats:[]}],market_notes}`;
+}
+
+/* Context trimming — same as main app */
+function trimOldSearchResults(msgs, keep=2) {
+  let rounds = 0;
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i];
+    if (m.role !== 'assistant' || !Array.isArray(m.content)) continue;
+    const hasSearch = m.content.some(b => b.type === 'web_search_tool_result' || (b.type === 'tool_result' && b.tool_use_id));
+    if (!hasSearch) continue;
+    rounds++;
+    if (rounds > keep) {
+      m.content = m.content.map(b => {
+        if (b.type === 'web_search_tool_result') {
+          return { type: 'text', text: `[Previous search trimmed]` };
+        }
+        return b;
+      });
+    }
+  }
+}
+
+async function apiCallTimed(model, msgs, tools, maxTok) {
+  const t0 = performance.now();
+  const payload = { model, max_tokens: maxTok, messages: msgs };
+  if (tools) payload.tools = tools;
+  const res = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) {
+    const e = await res.text();
+    throw new Error(`${res.status}: ${e}`);
+  }
+  const data = await res.json();
+  const elapsed = performance.now() - t0;
+  return { data, elapsed, model };
+}
+
+function estimateCost(model, usage) {
+  const p = PRICING[model];
+  if (!p || !usage) return 0;
+  return (usage.input_tokens || 0) * p.input + (usage.output_tokens || 0) * p.output;
+}
+
+async function runTest() {
+  const btn = document.getElementById('runBtn');
+  btn.disabled = true;
+  btn.textContent = 'Running…';
+
+  logEl = document.getElementById('log');
+  logEl.style.display = 'block';
+  logEl.textContent = '';
+  timelineEl = document.getElementById('timeline');
+  timelineEl.innerHTML = `<div class="tl-row hd"><div class="tl-idx">#</div><div class="tl-desc">Call</div><div class="tl-time">Latency</div><div class="tl-cost">Cost</div></div>`;
+  document.getElementById('summaryBox').style.display = 'grid';
+
+  const loc = document.getElementById('cfgLoc').value;
+  const pType = document.getElementById('cfgType').value;
+  const budget = parseBudget(document.getElementById('cfgBudget').value);
+  const area = parseArea(document.getElementById('cfgArea').value);
+  const maxIter = parseInt(document.getElementById('cfgMaxIter').value) || 6;
+  const searchModel = document.getElementById('cfgSearchModel').value;
+  const synthModel = document.getElementById('cfgSynthModel').value;
+  const [searchMaxTok, synthMaxTok] = parseTokenLimits(document.getElementById('cfgTokens').value);
+
+  const prompt = buildTestPrompt(loc, pType, budget, area);
+  const tools = [{ type: 'web_search_20250305', name: 'web_search' }];
+  const msgs = [{ role: 'user', content: prompt }];
+
+  const timeline = [];
+  let totalInputTok = 0, totalOutputTok = 0, totalCost = 0;
+  const tGlobal = performance.now();
+
+  logMsg(`Starting perf test: ${loc}, ${pType}, budget ${budget[0]}-${budget[1]}, area ${area[0]}-${area[1]}`);
+  logMsg(`Search model: ${searchModel}, Synth model: ${synthModel}`);
+  logMsg(`Max search iters: ${maxIter}, tokens: ${searchMaxTok}/${synthMaxTok}`);
+  logMsg('---');
+
+  let i = 0;
+  try {
+    // ── Search loop ──
+    while (i++ < maxIter) {
+      trimOldSearchResults(msgs);
+      logMsg(`[SEARCH] API call ${i}…`);
+      const { data, elapsed, model } = await apiCallTimed(searchModel, msgs, tools, searchMaxTok);
+      const usage = data.usage || {};
+      const cost = estimateCost(model, usage);
+      totalInputTok += usage.input_tokens || 0;
+      totalOutputTok += usage.output_tokens || 0;
+      totalCost += cost;
+
+      const tus = data.content.filter(b => b.type === 'tool_use');
+      const txts = data.content.filter(b => b.type === 'text');
+      const queries = tus.map(t => t.input?.query || '?').join(', ');
+      const desc = tus.length
+        ? `Search: "${queries.slice(0,80)}${queries.length>80?'…':''}"`
+        : `Text response (${txts.map(t=>t.text?.length||0).reduce((a,b)=>a+b,0)} chars)`;
+
+      timeline.push({ idx: i, type: 'search', desc, elapsed, cost, inTok: usage.input_tokens||0, outTok: usage.output_tokens||0, stopReason: data.stop_reason });
+      addTimelineRow(i, desc, elapsed, cost);
+      logMsg(`  → ${(elapsed/1000).toFixed(1)}s | in:${usage.input_tokens||'?'} out:${usage.output_tokens||'?'} | $${cost.toFixed(4)} | stop:${data.stop_reason}`);
+
+      msgs.push({ role: 'assistant', content: data.content });
+      if (tus.length) {
+        tus.forEach(tu => logMsg(`  🔎 "${tu.input?.query||'?'}"`, 'tag-search'));
+        msgs.push({ role: 'user', content: tus.map(tu => ({ type: 'tool_result', tool_use_id: tu.id, content: '(executed)' })) });
+        continue;
+      }
+      if (data.stop_reason === 'end_turn' && txts.length) {
+        logMsg('  ✓ Model returned final text in search loop');
+        break;
+      }
+      break;
+    }
+
+    // ── Synthesis call ──
+    logMsg('---');
+    logMsg('[SYNTH] Final synthesis call…');
+    trimOldSearchResults(msgs);
+    msgs.push({ role: 'user', content: 'Now compile all findings into the requested JSON. Return ONLY the JSON, no markdown fences.' });
+    const { data: synthData, elapsed: synthElapsed } = await apiCallTimed(synthModel, msgs, null, synthMaxTok);
+    const synthUsage = synthData.usage || {};
+    const synthCost = estimateCost(synthModel, synthUsage);
+    totalInputTok += synthUsage.input_tokens || 0;
+    totalOutputTok += synthUsage.output_tokens || 0;
+    totalCost += synthCost;
+
+    timeline.push({ idx: i+1, type: 'synth', desc: 'Final synthesis', elapsed: synthElapsed, cost: synthCost, inTok: synthUsage.input_tokens||0, outTok: synthUsage.output_tokens||0 });
+    addTimelineRow(i+1, '<strong style="color:#ef9f27">Synthesis</strong> ('+synthModel.split('-')[1]+')', synthElapsed, synthCost);
+    logMsg(`  → ${(synthElapsed/1000).toFixed(1)}s | in:${synthUsage.input_tokens||'?'} out:${synthUsage.output_tokens||'?'} | $${synthCost.toFixed(4)}`);
+
+    // ── Try to parse result ──
+    const txts = synthData.content.filter(b => b.type === 'text');
+    const raw = txts.map(b => b.text).join('');
+    try {
+      let t = raw.trim();
+      const f = t.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (f) t = f[1].trim();
+      const result = JSON.parse(t);
+      logMsg('---');
+      logMsg(`✓ Parsed JSON: ${result.properties?.length||0} properties, benchmark: ${result.benchmark?.district||'?'}`);
+      if (result.properties) {
+        result.properties.forEach((p, j) => {
+          logMsg(`  [${j+1}] ${p.name||'?'} — ${(p.price_total||0).toLocaleString()} PLN — ${p.listing_status||'?'} — ${p.portal||'?'}`);
+        });
+      }
+    } catch(e) {
+      logMsg(`⚠ JSON parse failed: ${e.message}`, 'tag-err');
+      logMsg(`Raw response (first 500 chars): ${raw.slice(0,500)}`);
+    }
+
+  } catch (err) {
+    logMsg(`ERROR: ${err.message}`, 'tag-err');
+  }
+
+  // ── Summary ──
+  const totalTime = performance.now() - tGlobal;
+  const numCalls = timeline.length;
+  const avgLatency = numCalls ? timeline.reduce((s, t) => s + t.elapsed, 0) / numCalls : 0;
+
+  document.getElementById('sTotalTime').textContent = (totalTime/1000).toFixed(1) + 's';
+  document.getElementById('sApiCalls').textContent = numCalls;
+  document.getElementById('sAvgLatency').textContent = (avgLatency/1000).toFixed(1) + 's';
+  document.getElementById('sTokens').textContent = ((totalInputTok + totalOutputTok) / 1000).toFixed(1) + 'k';
+  document.getElementById('sCost').textContent = '$' + totalCost.toFixed(4);
+
+  logMsg('---');
+  logMsg(`SUMMARY: ${(totalTime/1000).toFixed(1)}s total | ${numCalls} calls | avg ${(avgLatency/1000).toFixed(1)}s/call | ${totalInputTok+totalOutputTok} tokens | $${totalCost.toFixed(4)}`);
+
+  // Add bars
+  const maxTime = Math.max(...timeline.map(t => t.elapsed));
+  timeline.forEach((t, j) => {
+    const row = timelineEl.children[j + 1]; // +1 for header
+    if (row) {
+      const barWrap = document.createElement('div');
+      barWrap.className = 'bar-wrap';
+      barWrap.style.gridColumn = '1 / -1';
+      const bar = document.createElement('div');
+      bar.className = 'bar';
+      bar.style.width = Math.round(t.elapsed / maxTime * 100) + '%';
+      bar.style.background = t.type === 'synth' ? '#ef9f27' : 'var(--gold)';
+      barWrap.appendChild(bar);
+      row.appendChild(barWrap);
+    }
+  });
+
+  btn.disabled = false;
+  btn.textContent = 'Run again';
+}
+
+function addTimelineRow(idx, desc, elapsed, cost) {
+  const row = document.createElement('div');
+  row.className = 'tl-row';
+  row.innerHTML = `
+    <div class="tl-idx">${idx}</div>
+    <div class="tl-desc">${desc}</div>
+    <div class="tl-time">${(elapsed/1000).toFixed(2)}s</div>
+    <div class="tl-cost">$${cost.toFixed(4)}</div>`;
+  timelineEl.appendChild(row);
+}
+</script>
+</body>
+</html>
