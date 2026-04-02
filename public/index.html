@@ -752,8 +752,8 @@ function buildPortalURLs(brief, portal){
     if(aMax)q.push(`search[filter_float_m:to]=${aMax}`);
     if(q.length)u+='?'+q.join('&');
     urls.push(u);
-    /* second page */
     urls.push(u+(q.length?'&':'?')+'page=2');
+    urls.push(u+(q.length?'&':'?')+'page=3');
   }
   else if(portal.id==='olx'){
     let u=`https://www.olx.pl/nieruchomosci/${pPL}/sprzedaz/${locPL}/`;
@@ -764,10 +764,10 @@ function buildPortalURLs(brief, portal){
     if(aMax)q.push(`search[filter_float_m:to]=${aMax}`);
     if(q.length)u+='?'+q.join('&');
     urls.push(u);
+    urls.push(u+(q.length?'&':'?')+'page=2');
   }
   else if(portal.id==='gratka'){
     let u=`https://gratka.pl/nieruchomosci/${pPL}/${locPL}/sprzedaz`;
-    /* Gratka query params are less documented; try common pattern */
     const q=[];
     if(pMin)q.push(`cena-od=${pMin}`);
     if(pMax)q.push(`cena-do=${pMax}`);
@@ -775,9 +775,12 @@ function buildPortalURLs(brief, portal){
     if(aMax)q.push(`powierzchnia-do=${aMax}`);
     if(q.length)u+='?'+q.join('&');
     urls.push(u);
+    urls.push(u+(q.length?'&':'?')+'page=2');
   }
   else if(portal.id==='morizon'){
-    urls.push(`https://www.morizon.pl/${pPL}/${locPL}/?ps[price_from]=${pMin||''}&ps[price_to]=${pMax||''}&ps[living_area_from]=${aMin||''}&ps[living_area_to]=${aMax||''}`);
+    const mu=`https://www.morizon.pl/${pPL}/${locPL}/?ps[price_from]=${pMin||''}&ps[price_to]=${pMax||''}&ps[living_area_from]=${aMin||''}&ps[living_area_to]=${aMax||''}`;
+    urls.push(mu);
+    urls.push(mu+'&page=2');
   }
   else if(portal.id==='nol'){
     urls.push(`https://www.nieruchomosci-online.pl/szukaj.html?3,${pType==='apartment'?'mieszkanie':'dom'},sprzedaz,,${locPL}`);
@@ -1234,21 +1237,15 @@ async function searchPortal(brief, portal, logWrap){
 
   let fetchPrompt;
   if(directURLs.length){
-    log(`<span style="color:rgba(250,248,244,.35)">Fetching ${portal.name} search pages…</span>`,logWrap);
+    log(`<span style="color:rgba(250,248,244,.35)">Fetching ${portal.name} (${directURLs.length} pages)…</span>`,logWrap);
     directURLs.forEach(u=>log(`<span style="color:rgba(250,248,244,.2)">→ ${u.slice(0,80)}…</span>`,logWrap));
-    fetchPrompt=`You are a real estate data scraper. Fetch the following search results pages and extract ALL property listings shown on them.
+    fetchPrompt=`Fetch ALL of these URLs using web_fetch. Fetch every single one:
 
-URLS TO FETCH:
 ${directURLs.map((u,i)=>`${i+1}. ${u}`).join('\n')}
 
-For each page:
-1. Use web_fetch to load the page
-2. Extract every individual property listing shown (title, price, area, rooms, location, URL)
-3. If the page blocks fetching or returns an error, use web_search with "site:${portal.site} ${pPL} ${loc} sprzedaż" as fallback
+If any URL fails, use web_search as fallback: "site:${portal.site} ${pPL} ${loc} sprzedaż"
 
-CLIENT BRIEF: ${pType} in ${loc}, budget ${brief.budgetMin||'?'}-${brief.budgetMax||'?'} PLN, area ${brief.areaMin||'?'}-${brief.areaMax||'?'} m².
-
-After fetching, list ALL individual listings you found. For each listing provide: name/title, location, price, area m², rooms, URL to the listing page on ${portal.name}.`;
+After fetching, say "Done" and nothing else.`;
   } else {
     /* Agencies — no direct URL, use web_search */
     fetchPrompt=buildPortalPrompt(brief, portal);
@@ -1263,7 +1260,7 @@ After fetching, list ALL individual listings you found. For each listing provide
     const force = searchIters===1 ? {toolChoice:{type:'any'}} : {};
     let data;
     try{
-      data=await apiCall(MODEL_SEARCH,msgs,tools,4096,force);
+      data=await apiCall(MODEL_SEARCH,msgs,tools,1024,force);
     }catch(err){
       if(err.message.includes('Timeout')){timedOut=true;break;}
       throw err;
@@ -1306,40 +1303,14 @@ After fetching, list ALL individual listings you found. For each listing provide
     break;
   }
 
-  /* ═══ STEP 2: Build clean summary from extracted data ═══ */
+  /* ═══ STEP 2: Build data for parse — use raw fetched HTML directly ═══ */
+  const fetchedPages=allSearchData.fetchedContent;
   const uniqueUrls=[...new Map(allSearchData.urls.map(u=>[u.url,u])).values()];
   const modelText=allSearchData.texts.join('\n').trim();
-  const fetchedPages=allSearchData.fetchedContent;
-  const cleanParts=[];
-  cleanParts.push(`SEARCH/FETCH RESULTS for ${portal.name}:\n`);
-
-  /* Include raw fetched page content — this is the PRIMARY data source */
-  if(fetchedPages.length){
-    cleanParts.push(`FETCHED PAGES (${fetchedPages.length}):`);
-    fetchedPages.forEach((fp,i)=>{
-      cleanParts.push(`\n--- PAGE ${i+1}: ${fp.title||fp.url} ---`);
-      cleanParts.push(fp.text.slice(0,6000));
-    });
-    cleanParts.push('');
-  }
-  if(uniqueUrls.length){
-    cleanParts.push('SEARCH RESULTS:');
-    uniqueUrls.forEach((u,i)=>cleanParts.push(`${i+1}. ${u.title} — ${u.url}`));
-    cleanParts.push('');
-  }
-  if(allSearchData.citations.length){
-    cleanParts.push(`CONTENT SNIPPETS (${allSearchData.citations.length}):`);
-    allSearchData.citations.forEach((c,i)=>cleanParts.push(`[${i+1}] "${c.text}" — ${c.title} (${c.url})`));
-    cleanParts.push('');
-  }
-  if(modelText){
-    cleanParts.push('MODEL EXTRACTED DATA:');
-    cleanParts.push(modelText.slice(0,3000));
-  }
-  const summaryText=cleanParts.join('\n');
   const hasData=fetchedPages.length||uniqueUrls.length||allSearchData.citations.length||modelText;
-  console.log(`[${portal.name}] summary: ${fetchedPages.length} pages fetched, ${uniqueUrls.length} search URLs, ${allSearchData.citations.length} citations, ${modelText.length} chars model text, ${allSearchData.fetchErrors.length} errors`);
-  log(`<span style="color:rgba(250,248,244,.35)">${fetchedPages.length} pages, ${uniqueUrls.length} URLs, ${allSearchData.citations.length} snippets, ${modelText.length} chars</span>`,logWrap);
+
+  console.log(`[${portal.name}] data: ${fetchedPages.length} pages fetched, ${uniqueUrls.length} search URLs, ${modelText.length} chars text, ${allSearchData.fetchErrors.length} errors`);
+  log(`<span style="color:rgba(250,248,244,.35)">${fetchedPages.length} pages fetched, ${uniqueUrls.length} search URLs, ${allSearchData.fetchErrors.length} errors</span>`,logWrap);
 
   if(!hasData){
     console.warn(`[${portal.name}] NO DATA — early exit with []`);
@@ -1347,38 +1318,55 @@ After fetching, list ALL individual listings you found. For each listing provide
     return{raw:'[]',elapsed,queries,iters:searchIters,timedOut};
   }
 
-  /* ═══ STEP 3: Separate cheap call — parse clean data into JSON ═══ */
-  log(`<span style="color:rgba(250,248,244,.35)">Parsing listings…</span>`,logWrap);
+  /* ═══ STEP 3: Parse raw page content directly into JSON listings ═══ */
+  log(`<span style="color:rgba(250,248,244,.35)">Parsing ${fetchedPages.length} pages into listings…</span>`,logWrap);
   const hint=portal.parseHint||'';
-  const parsePrompt=`You are a data extraction engine. Parse these web search/fetch results into a JSON array of property listings.
 
-PORTAL: ${portal.name}
-${hint?'PARSING GUIDE: '+hint:''}
+  /* Build input: raw fetched HTML + any search results as fallback */
+  const dataParts=[];
+  fetchedPages.forEach((fp,i)=>{
+    dataParts.push(`\n=== PAGE ${i+1}: ${fp.url} ===`);
+    dataParts.push(fp.text);
+  });
+  if(uniqueUrls.length){
+    dataParts.push('\n=== SEARCH RESULTS ===');
+    uniqueUrls.forEach((u,i)=>dataParts.push(`${i+1}. ${u.title} — ${u.url}`));
+  }
+  if(allSearchData.citations.length){
+    dataParts.push('\n=== SNIPPETS ===');
+    allSearchData.citations.forEach((c,i)=>dataParts.push(`[${i+1}] "${c.text}" (${c.url})`));
+  }
+  if(modelText){
+    dataParts.push('\n=== ADDITIONAL DATA ===');
+    dataParts.push(modelText.slice(0,2000));
+  }
+  const rawData=dataParts.join('\n');
+  console.log(`[${portal.name}] parse input: ${rawData.length} chars`);
 
-${summaryText}
+  const parsePrompt=`Extract ALL property listings from this raw HTML/text data from ${portal.name}.
+${hint?'HINT: '+hint:''}
 
-TASK: Extract every distinct property listing from the data above.
-- Each unique listing URL = one entry. Skip search/index pages.
-- Polish prices: "1 500 000 zł"=1500000, "950 tys."=950000, "1,2 mln"=1200000
-- Area: "120 m²"=120, "120m2"=120
+${rawData}
 
-OUTPUT — JSON array:
-[{"name":"...","location":"...","price_total":NUMBER_OR_NULL,"price_sqm":NUMBER_OR_NULL,"area_sqm":NUMBER_OR_NULL,"land_sqm":NUMBER_OR_NULL,"rooms":NUMBER_OR_NULL,"portal":"${portal.name}","listing_status":"active","url":"...","highlights":[],"caveats":[]}]
+For EACH listing found, output a JSON object with: name, location, price_total (number), price_sqm (number), area_sqm (number), land_sqm (number), rooms (number), portal ("${portal.name}"), listing_status ("active"), url (full URL), highlights (array), caveats (array).
 
-Return [] if no listings. Use null for unknowns. ONLY JSON, no text.`;
+Polish price formats: "1 500 000 zł"→1500000, "950 tys."→950000, "1,2 mln"→1200000. Area: "120 m²"→120.
+Use null for missing values. Return a JSON array. Return [] if no listings found.
+ONLY output the JSON array, nothing else.`;
 
   let fd;
   try{
-    fd=await apiCall(MODEL_SEARCH,[{role:'user',content:parsePrompt}],null,4096);
+    fd=await apiCall(MODEL_SEARCH,[{role:'user',content:parsePrompt}],null,8192);
   }catch(err){
+    console.error(`[${portal.name} parse] API error:`,err.message);
     const elapsed=performance.now()-t0;
     return{raw:'[]',elapsed,queries,iters:searchIters,timedOut:true};
   }
   const txts=fd.content.filter(b=>b.type==='text');
   const raw=txts.length?txts.map(b=>b.text).join(''):'[]';
   const elapsed=performance.now()-t0;
-  console.log(`[${portal.name} parse] ${raw.slice(0,150)}`);
-  log(`<span style="color:rgba(250,248,244,.35)">[parse result] ${raw.slice(0,80)}…</span>`,logWrap);
+  console.log(`[${portal.name} parse] ${raw.slice(0,200)}`);
+  log(`<span style="color:rgba(250,248,244,.35)">[parse] ${raw.slice(0,100)}…</span>`,logWrap);
   return{raw,elapsed,queries,iters:searchIters,timedOut};
 }
 
