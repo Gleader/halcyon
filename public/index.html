@@ -1170,7 +1170,7 @@ const PORTAL_TIME_LIMIT_MS = 120000;
 
 /* ── Extract clean data from API response blocks (client-side) ── */
 function extractSearchData(contentBlocks){
-  const results={queries:[],urls:[],texts:[],citations:[],fetchedUrls:[]};
+  const results={queries:[],urls:[],texts:[],citations:[],fetchedUrls:[],fetchedContent:[],fetchErrors:[]};
   for(const b of contentBlocks){
     if(b.type==='server_tool_use'&&b.name==='web_search'){
       results.queries.push(b.input?.query||'');
@@ -1178,6 +1178,23 @@ function extractSearchData(contentBlocks){
     if(b.type==='server_tool_use'&&b.name==='web_fetch'){
       results.fetchedUrls.push(b.input?.url||'');
     }
+    /* ── web_fetch results ── */
+    if(b.type==='web_fetch_tool_result'){
+      const c=b.content;
+      if(c&&c.type==='web_fetch_tool_error'){
+        results.fetchErrors.push(c.error_code||'unknown');
+        console.warn('[web_fetch ERROR]',c.error_code);
+      } else if(c&&c.type==='web_fetch_result'){
+        const doc=c.content;
+        if(doc&&doc.source&&doc.source.data){
+          /* Capture first 8000 chars of fetched page content */
+          const pageText=(doc.source.data||'').slice(0,8000);
+          results.fetchedContent.push({url:c.url||'',title:doc.title||'',text:pageText});
+          console.log(`[web_fetch OK] ${c.url?.slice(0,60)} → ${pageText.length} chars`);
+        }
+      }
+    }
+    /* ── web_search results ── */
     if(b.type==='web_search_tool_result'&&Array.isArray(b.content)){
       for(const r of b.content){
         if(r.type==='web_search_result'){
@@ -1201,7 +1218,7 @@ async function searchPortal(brief, portal, logWrap){
   const t0=performance.now();
   const queries=[];
   let timedOut=false;
-  let allSearchData={queries:[],urls:[],texts:[],citations:[]};
+  let allSearchData={queries:[],urls:[],texts:[],citations:[],fetchedContent:[],fetchErrors:[]};
 
   /* ═══ STEP 1: Fetch portal search pages directly ═══ */
   const directURLs = portal.type==='agencies' ? [] : buildPortalURLs(brief, portal);
@@ -1246,7 +1263,7 @@ After fetching, list ALL individual listings you found. For each listing provide
     const force = searchIters===1 ? {toolChoice:{type:'any'}} : {};
     let data;
     try{
-      data=await apiCall(MODEL_SEARCH,msgs,tools,2048,force);
+      data=await apiCall(MODEL_SEARCH,msgs,tools,4096,force);
     }catch(err){
       if(err.message.includes('Timeout')){timedOut=true;break;}
       throw err;
@@ -1261,10 +1278,19 @@ After fetching, list ALL individual listings you found. For each listing provide
       queries.push(q);
       log(`<strong>${portal.name}</strong> 🔍 <em>"${q.slice(0,70)}"</em>`,logWrap);
     });
-    sd.fetchedUrls.forEach(u=>log(`<strong>${portal.name}</strong> 📄 fetched <em>${u.slice(0,60)}</em>`,logWrap));
+    sd.fetchedUrls.forEach(u=>log(`<strong>${portal.name}</strong> 📄 fetching <em>${u.slice(0,60)}</em>`,logWrap));
+    sd.fetchedContent.forEach(fc=>{
+      allSearchData.fetchedContent.push(fc);
+      log(`<strong>${portal.name}</strong> ✅ fetched <em>${fc.url.slice(0,50)}</em> (${fc.text.length} chars)`,logWrap);
+    });
+    sd.fetchErrors.forEach(e=>{
+      allSearchData.fetchErrors.push(e);
+      log(`<strong>${portal.name}</strong> ❌ fetch error: ${e}`,logWrap);
+    });
     sd.urls.forEach(u=>allSearchData.urls.push(u));
     sd.texts.forEach(t=>allSearchData.texts.push(t));
     sd.citations.forEach(c=>allSearchData.citations.push(c));
+    console.log(`[${portal.name} iter ${searchIters}] extracted: ${sd.fetchedContent.length} pages fetched, ${sd.fetchErrors.length} errors, ${sd.texts.length} text blocks (${sd.texts.join('').length} chars), ${sd.queries.length} searches`);
 
     /* Handle pause_turn */
     if(data.stop_reason==='pause_turn'){
@@ -1282,10 +1308,22 @@ After fetching, list ALL individual listings you found. For each listing provide
 
   /* ═══ STEP 2: Build clean summary from extracted data ═══ */
   const uniqueUrls=[...new Map(allSearchData.urls.map(u=>[u.url,u])).values()];
+  const modelText=allSearchData.texts.join('\n').trim();
+  const fetchedPages=allSearchData.fetchedContent;
   const cleanParts=[];
-  cleanParts.push(`SEARCH RESULTS for ${portal.name} (${queries.length} queries, ${uniqueUrls.length} page results):\n`);
+  cleanParts.push(`SEARCH/FETCH RESULTS for ${portal.name}:\n`);
+
+  /* Include raw fetched page content — this is the PRIMARY data source */
+  if(fetchedPages.length){
+    cleanParts.push(`FETCHED PAGES (${fetchedPages.length}):`);
+    fetchedPages.forEach((fp,i)=>{
+      cleanParts.push(`\n--- PAGE ${i+1}: ${fp.title||fp.url} ---`);
+      cleanParts.push(fp.text.slice(0,6000));
+    });
+    cleanParts.push('');
+  }
   if(uniqueUrls.length){
-    cleanParts.push('PAGES FOUND:');
+    cleanParts.push('SEARCH RESULTS:');
     uniqueUrls.forEach((u,i)=>cleanParts.push(`${i+1}. ${u.title} — ${u.url}`));
     cleanParts.push('');
   }
@@ -1294,16 +1332,17 @@ After fetching, list ALL individual listings you found. For each listing provide
     allSearchData.citations.forEach((c,i)=>cleanParts.push(`[${i+1}] "${c.text}" — ${c.title} (${c.url})`));
     cleanParts.push('');
   }
-  const modelText=allSearchData.texts.join('\n').trim();
   if(modelText){
-    cleanParts.push('EXTRACTED DATA:');
-    cleanParts.push(modelText.slice(0,4000));
+    cleanParts.push('MODEL EXTRACTED DATA:');
+    cleanParts.push(modelText.slice(0,3000));
   }
   const summaryText=cleanParts.join('\n');
-  console.log(`[${portal.name}] extracted: ${uniqueUrls.length} URLs, ${allSearchData.citations.length} citations, ${modelText.length} chars text`);
-  log(`<span style="color:rgba(250,248,244,.35)">${uniqueUrls.length} URLs, ${allSearchData.citations.length} snippets, ${modelText.length} chars</span>`,logWrap);
+  const hasData=fetchedPages.length||uniqueUrls.length||allSearchData.citations.length||modelText;
+  console.log(`[${portal.name}] summary: ${fetchedPages.length} pages fetched, ${uniqueUrls.length} search URLs, ${allSearchData.citations.length} citations, ${modelText.length} chars model text, ${allSearchData.fetchErrors.length} errors`);
+  log(`<span style="color:rgba(250,248,244,.35)">${fetchedPages.length} pages, ${uniqueUrls.length} URLs, ${allSearchData.citations.length} snippets, ${modelText.length} chars</span>`,logWrap);
 
-  if(!uniqueUrls.length&&!allSearchData.citations.length&&!modelText){
+  if(!hasData){
+    console.warn(`[${portal.name}] NO DATA — early exit with []`);
     const elapsed=performance.now()-t0;
     return{raw:'[]',elapsed,queries,iters:searchIters,timedOut};
   }
