@@ -732,17 +732,24 @@ const KEEP_FULL_RESULTS = 2;
 
 /* Portals searched in Phase 1 (listing collection) */
 const ALL_PORTALS = [
-  { id:'otodom',   name:'Otodom.pl',   site:'otodom.pl',   type:'portal', tier:'major', maxIters:DEBUG_CHEAP?5:5, note:'Largest Polish portal — deep search' },
-  { id:'olx',      name:'OLX.pl',      site:'olx.pl/nieruchomosci', type:'portal', tier:'major', maxIters:DEBUG_CHEAP?5:5, note:'Major classifieds — broad coverage' },
-  { id:'gratka',   name:'Gratka.pl',   site:'gratka.pl',   type:'portal', tier:'major', maxIters:DEBUG_CHEAP?3:5, note:'Wide coverage — many unique listings' },
-  { id:'morizon',  name:'Morizon.pl',  site:'morizon.pl',  type:'portal', tier:'major', maxIters:DEBUG_CHEAP?2:4, note:'Aggregator — cross-portal results' },
-  { id:'nol',      name:'Nieruchomości-online.pl', site:'nieruchomosci-online.pl', type:'portal', tier:'major', maxIters:DEBUG_CHEAP?2:4, note:'Detail-rich listings' },
-  { id:'domiporta',name:'Domiporta.pl', site:'domiporta.pl', type:'portal', tier:'minor', maxIters:DEBUG_CHEAP?2:3, note:'Secondary portal' },
-  { id:'tabela',   name:'TabelaOfert.pl', site:'tabelaofert.pl', type:'portal', tier:'minor', maxIters:DEBUG_CHEAP?2:3, note:'Developer listings' },
+  { id:'otodom',   name:'Otodom.pl',   site:'otodom.pl',   type:'portal', tier:'major', maxIters:DEBUG_CHEAP?5:5, note:'Largest Polish portal — deep search',
+    parseHint:'Otodom URLs: otodom.pl/pl/oferta/... Title format: "Name · location · otodom.pl". Snippets often show: price, area m², rooms, floor. Archived if URL has /archiwalne/ or page says "Ogłoszenie archiwalne".' },
+  { id:'olx',      name:'OLX.pl',      site:'olx.pl/nieruchomosci', type:'portal', tier:'major', maxIters:DEBUG_CHEAP?5:5, note:'Major classifieds — broad coverage',
+    parseHint:'OLX URLs: olx.pl/d/oferta/... Titles are listing names. Snippets show price, location, area. Archived if "To ogłoszenie jest już nieaktualne".' },
+  { id:'gratka',   name:'Gratka.pl',   site:'gratka.pl',   type:'portal', tier:'major', maxIters:DEBUG_CHEAP?3:5, note:'Wide coverage — many unique listings',
+    parseHint:'Gratka URLs: gratka.pl/nieruchomosci/... Titles show property type + location. Snippets contain price, area, rooms. Archived if "Ogłoszenie wygasło".' },
+  { id:'morizon',  name:'Morizon.pl',  site:'morizon.pl',  type:'portal', tier:'major', maxIters:DEBUG_CHEAP?2:4, note:'Aggregator — cross-portal results',
+    parseHint:'Morizon URLs: morizon.pl/oferta/... Aggregator — may show listings from other portals. Snippets show price, area, rooms.' },
+  { id:'nol',      name:'Nieruchomości-online.pl', site:'nieruchomosci-online.pl', type:'portal', tier:'major', maxIters:DEBUG_CHEAP?2:4, note:'Detail-rich listings',
+    parseHint:'URLs: nieruchomosci-online.pl/... Rich detail pages. Snippets typically include full specs.' },
+  { id:'domiporta',name:'Domiporta.pl', site:'domiporta.pl', type:'portal', tier:'minor', maxIters:DEBUG_CHEAP?2:3, note:'Secondary portal',
+    parseHint:'URLs: domiporta.pl/... Snippets show basic listing info — price, area, location.' },
+  { id:'tabela',   name:'TabelaOfert.pl', site:'tabelaofert.pl', type:'portal', tier:'minor', maxIters:DEBUG_CHEAP?2:3, note:'Developer listings',
+    parseHint:'URLs: tabelaofert.pl/... Developer/new-build listings. May show estate name, developer, price from/to.' },
   { id:'agencies', name:'Premium Agencies', site:null, type:'agencies', tier:'major', maxIters:DEBUG_CHEAP?3:5,
     note:'MetroHouse, Freedom, Homfi, Strzelczyk, RE/MAX, Hamilton May, Lions Estate, Partners Intl, Vilea, NuxEstate, Prestige RE',
-    sites:['metrohouse.pl','freedom-nieruchomosci.pl','homfi.com','strzelczyk.pl','remax.pl','hamiltonmay.com','lionsestate.pl','partnersinternational.pl','vilea.pl','nuxestate.pl','prestige-real-estate.pl']
-  }
+    sites:['metrohouse.pl','freedom-nieruchomosci.pl','homfi.com','strzelczyk.pl','remax.pl','hamiltonmay.com','lionsestate.pl','partnersinternational.pl','vilea.pl','nuxestate.pl','prestige-real-estate.pl'],
+    parseHint:'Multiple agency websites. Each URL domain tells you the agency name. Listings are premium/exclusive — extract all details available from titles and snippets.' }
 ];
 /* DEBUG_CHEAP: only top 3 portals to stay within Vercel 60s limits */
 const PORTALS = DEBUG_CHEAP ? ALL_PORTALS.slice(0,3) : ALL_PORTALS;
@@ -1218,20 +1225,33 @@ async function searchPortal(brief, portal, logWrap){
   }
 
   /* ═══ STEP 3: Separate cheap call — parse clean data into JSON ═══ */
-  log(`<span style="color:rgba(250,248,244,.35)">Step 3: parsing into JSON…</span>`,logWrap);
+  log(`<span style="color:rgba(250,248,244,.35)">Step 3: parsing ${uniqueUrls.length} URLs into JSON…</span>`,logWrap);
   const loc=brief.location||'Warsaw';
   const pType=brief.propertyType||'house';
-  const parsePrompt=`You are a data parser. Below are web search results for ${pType} listings on ${portal.name} in ${loc}.
-Extract ALL property listings mentioned and return them as a JSON array.
+  const hint=portal.parseHint||'';
+  const parsePrompt=`You are a data extraction engine. Parse these web search results into a JSON array of property listings.
+
+PORTAL: ${portal.name}
+${hint?'PARSING GUIDE: '+hint:''}
 
 ${summaryText}
 
-CLIENT BRIEF: ${pType} in ${loc}, budget ${brief.budgetMin||'?'}-${brief.budgetMax||'?'} PLN, area ${brief.areaMin||'?'}-${brief.areaMax||'?'} m².
+TASK: Extract every distinct property listing from the data above.
+- Each unique URL from ${portal.name} (${portal.site||'agency sites'}) that points to a listing page = one listing
+- Parse price, area, rooms, location from the title, snippet, and model analysis
+- Polish prices: "1 500 000 zł" = 1500000, "950 tys." = 950000, "1,2 mln" = 1200000
+- Area: "120 m²" = 120, "120m2" = 120
+- If a page URL is a search results page (not an individual listing), skip it
 
-For EACH listing extract: name, location, price_total (number), price_sqm (number or null), area_sqm (number), land_sqm (number or null), rooms (number or null), portal:"${portal.name}", listing_status:"active"/"archived"/"unknown", url, highlights:[], caveats:[].
-If a field is unknown use null.
-Return ONLY a valid JSON array: [{...},{...}]
-No commentary, no markdown fences.`;
+CLIENT BRIEF (for relevance): ${pType} in ${loc}, budget ${brief.budgetMin||'?'}-${brief.budgetMax||'?'} PLN, area ${brief.areaMin||'?'}-${brief.areaMax||'?'} m².
+
+OUTPUT FORMAT — JSON array, one object per listing:
+[{"name":"...","location":"...","price_total":NUMBER_OR_NULL,"price_sqm":NUMBER_OR_NULL,"area_sqm":NUMBER_OR_NULL,"land_sqm":NUMBER_OR_NULL,"rooms":NUMBER_OR_NULL,"portal":"${portal.name}","listing_status":"active","url":"...","highlights":[],"caveats":[]}]
+
+Rules:
+- Return [] if no individual listings found
+- Use null for unknown fields, not strings
+- Return ONLY the JSON array — no text before or after`;
 
   let fd;
   try{
