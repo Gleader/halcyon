@@ -732,9 +732,9 @@ const KEEP_FULL_RESULTS = 2;
 
 /* Portals searched in Phase 1 (listing collection) */
 const ALL_PORTALS = [
-  { id:'otodom',   name:'Otodom.pl',   site:'otodom.pl',   type:'portal', tier:'major', maxIters:DEBUG_CHEAP?3:5, note:'Largest Polish portal — deep search' },
-  { id:'olx',      name:'OLX.pl',      site:'olx.pl/nieruchomosci', type:'portal', tier:'major', maxIters:DEBUG_CHEAP?3:5, note:'Major classifieds — broad coverage' },
-  { id:'gratka',   name:'Gratka.pl',   site:'gratka.pl',   type:'portal', tier:'major', maxIters:DEBUG_CHEAP?2:5, note:'Wide coverage — many unique listings' },
+  { id:'otodom',   name:'Otodom.pl',   site:'otodom.pl',   type:'portal', tier:'major', maxIters:DEBUG_CHEAP?5:5, note:'Largest Polish portal — deep search' },
+  { id:'olx',      name:'OLX.pl',      site:'olx.pl/nieruchomosci', type:'portal', tier:'major', maxIters:DEBUG_CHEAP?5:5, note:'Major classifieds — broad coverage' },
+  { id:'gratka',   name:'Gratka.pl',   site:'gratka.pl',   type:'portal', tier:'major', maxIters:DEBUG_CHEAP?3:5, note:'Wide coverage — many unique listings' },
   { id:'morizon',  name:'Morizon.pl',  site:'morizon.pl',  type:'portal', tier:'major', maxIters:DEBUG_CHEAP?2:4, note:'Aggregator — cross-portal results' },
   { id:'nol',      name:'Nieruchomości-online.pl', site:'nieruchomosci-online.pl', type:'portal', tier:'major', maxIters:DEBUG_CHEAP?2:4, note:'Detail-rich listings' },
   { id:'domiporta',name:'Domiporta.pl', site:'domiporta.pl', type:'portal', tier:'minor', maxIters:DEBUG_CHEAP?2:3, note:'Secondary portal' },
@@ -1121,7 +1121,7 @@ async function searchPortal(brief, portal, logWrap){
     const forceSearch = iters===1 ? {toolChoice:{type:'any'}} : {};
     let data;
     try{
-      data=await apiCall(MODEL_SEARCH,msgs,tools,DEBUG_CHEAP?1536:portal.type==='benchmark'?2048:1536,forceSearch);
+      data=await apiCall(MODEL_SEARCH,msgs,tools,iters===1?1536:4096,forceSearch);
     }catch(err){
       if(err.message.includes('Timeout')){
         log(`<span style="color:#ef9f27">⏱ ${portal.name} call timed out — collecting what we have…</span>`,logWrap);
@@ -1231,7 +1231,7 @@ async function searchPortal(brief, portal, logWrap){
   let fd;
   try{
     msgs.push({role:'user',content:'Return the JSON array now with ALL listings you found. Return ONLY a valid JSON array like [{name:"...",location:"...",price_total:123,...}]. No commentary, no markdown fences, no explanation.'});
-    fd=await apiCall(MODEL_SEARCH,msgs,null,2048);
+    fd=await apiCall(MODEL_SEARCH,msgs,null,4096);
   }catch(err){
     /* Even the final collect call timed out — return empty */
     const elapsed=performance.now()-t0;
