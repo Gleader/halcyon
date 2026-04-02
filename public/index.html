@@ -730,26 +730,87 @@ const MODEL_SYNTH  = DEBUG_CHEAP ? 'claude-haiku-4-5-20251001' : 'claude-sonnet-
 const MAX_ITERS_PER_PORTAL = 4;
 const KEEP_FULL_RESULTS = 2;
 
+/* ── Build direct search URLs for each portal ── */
+function buildPortalURLs(brief, portal){
+  const loc=(brief.location||'Warsaw').toLowerCase().replace(/\s+/g,'-');
+  const locPL=loc==='warsaw'?'warszawa':loc;
+  const pType=brief.propertyType||'house';
+  const pPL=pType==='apartment'?'mieszkania':'domy';
+  const pPLs=pType==='apartment'?'mieszkanie':'dom'; /* singular */
+  const pMin=brief.budgetMin||'';
+  const pMax=brief.budgetMax||'';
+  const aMin=brief.areaMin||'';
+  const aMax=brief.areaMax||'';
+  const urls=[];
+
+  if(portal.id==='otodom'){
+    let u=`https://www.otodom.pl/pl/wyniki/sprzedaz/${pPLs}/mazowieckie/${locPL}`;
+    const q=[];
+    if(pMin)q.push(`search[filter_float_price:from]=${pMin}`);
+    if(pMax)q.push(`search[filter_float_price:to]=${pMax}`);
+    if(aMin)q.push(`search[filter_float_m:from]=${aMin}`);
+    if(aMax)q.push(`search[filter_float_m:to]=${aMax}`);
+    if(q.length)u+='?'+q.join('&');
+    urls.push(u);
+    /* second page */
+    urls.push(u+(q.length?'&':'?')+'page=2');
+  }
+  else if(portal.id==='olx'){
+    let u=`https://www.olx.pl/nieruchomosci/${pPL}/sprzedaz/${locPL}/`;
+    const q=[];
+    if(pMin)q.push(`search[filter_float_price:from]=${pMin}`);
+    if(pMax)q.push(`search[filter_float_price:to]=${pMax}`);
+    if(aMin)q.push(`search[filter_float_m:from]=${aMin}`);
+    if(aMax)q.push(`search[filter_float_m:to]=${aMax}`);
+    if(q.length)u+='?'+q.join('&');
+    urls.push(u);
+  }
+  else if(portal.id==='gratka'){
+    let u=`https://gratka.pl/nieruchomosci/${pPL}/${locPL}/sprzedaz`;
+    /* Gratka query params are less documented; try common pattern */
+    const q=[];
+    if(pMin)q.push(`cena-od=${pMin}`);
+    if(pMax)q.push(`cena-do=${pMax}`);
+    if(aMin)q.push(`powierzchnia-od=${aMin}`);
+    if(aMax)q.push(`powierzchnia-do=${aMax}`);
+    if(q.length)u+='?'+q.join('&');
+    urls.push(u);
+  }
+  else if(portal.id==='morizon'){
+    urls.push(`https://www.morizon.pl/${pPL}/${locPL}/?ps[price_from]=${pMin||''}&ps[price_to]=${pMax||''}&ps[living_area_from]=${aMin||''}&ps[living_area_to]=${aMax||''}`);
+  }
+  else if(portal.id==='nol'){
+    urls.push(`https://www.nieruchomosci-online.pl/szukaj.html?3,${pType==='apartment'?'mieszkanie':'dom'},sprzedaz,,${locPL}`);
+  }
+  else if(portal.id==='domiporta'){
+    urls.push(`https://www.domiporta.pl/${pPLs}/sprzedaz/${locPL}?cenaMin=${pMin||''}&cenaMax=${pMax||''}`);
+  }
+  else if(portal.id==='tabela'){
+    urls.push(`https://tabelaofert.pl/${locPL}/${pPL}`);
+  }
+  return urls;
+}
+
 /* Portals searched in Phase 1 (listing collection) */
 const ALL_PORTALS = [
-  { id:'otodom',   name:'Otodom.pl',   site:'otodom.pl',   type:'portal', tier:'major', maxIters:DEBUG_CHEAP?5:5, note:'Largest Polish portal — deep search',
-    parseHint:'Otodom URLs: otodom.pl/pl/oferta/... Title format: "Name · location · otodom.pl". Snippets often show: price, area m², rooms, floor. Archived if URL has /archiwalne/ or page says "Ogłoszenie archiwalne".' },
-  { id:'olx',      name:'OLX.pl',      site:'olx.pl/nieruchomosci', type:'portal', tier:'major', maxIters:DEBUG_CHEAP?5:5, note:'Major classifieds — broad coverage',
-    parseHint:'OLX URLs: olx.pl/d/oferta/... Titles are listing names. Snippets show price, location, area. Archived if "To ogłoszenie jest już nieaktualne".' },
-  { id:'gratka',   name:'Gratka.pl',   site:'gratka.pl',   type:'portal', tier:'major', maxIters:DEBUG_CHEAP?3:5, note:'Wide coverage — many unique listings',
-    parseHint:'Gratka URLs: gratka.pl/nieruchomosci/... Titles show property type + location. Snippets contain price, area, rooms. Archived if "Ogłoszenie wygasło".' },
+  { id:'otodom',   name:'Otodom.pl',   site:'otodom.pl',   type:'portal', tier:'major', maxIters:DEBUG_CHEAP?3:5, note:'Largest Polish portal — deep search',
+    parseHint:'Otodom listing URLs look like otodom.pl/pl/oferta/... Each listing card shows: title, price, area m², rooms, location. Ignore URLs that are search result pages.' },
+  { id:'olx',      name:'OLX.pl',      site:'olx.pl/nieruchomosci', type:'portal', tier:'major', maxIters:DEBUG_CHEAP?3:5, note:'Major classifieds — broad coverage',
+    parseHint:'OLX listing URLs: olx.pl/d/oferta/... Listing cards show: title, price, location, area. Ignore promoted/ad cards.' },
+  { id:'gratka',   name:'Gratka.pl',   site:'gratka.pl',   type:'portal', tier:'major', maxIters:DEBUG_CHEAP?2:5, note:'Wide coverage — many unique listings',
+    parseHint:'Gratka listing URLs: gratka.pl/nieruchomosci/dom/... Each card has title, price, area, rooms.' },
   { id:'morizon',  name:'Morizon.pl',  site:'morizon.pl',  type:'portal', tier:'major', maxIters:DEBUG_CHEAP?2:4, note:'Aggregator — cross-portal results',
-    parseHint:'Morizon URLs: morizon.pl/oferta/... Aggregator — may show listings from other portals. Snippets show price, area, rooms.' },
+    parseHint:'Morizon listing URLs: morizon.pl/oferta/... Aggregator — each card has price, area, rooms, source portal.' },
   { id:'nol',      name:'Nieruchomości-online.pl', site:'nieruchomosci-online.pl', type:'portal', tier:'major', maxIters:DEBUG_CHEAP?2:4, note:'Detail-rich listings',
-    parseHint:'URLs: nieruchomosci-online.pl/... Rich detail pages. Snippets typically include full specs.' },
+    parseHint:'Listing cards contain full specs: price, area, rooms, location, condition.' },
   { id:'domiporta',name:'Domiporta.pl', site:'domiporta.pl', type:'portal', tier:'minor', maxIters:DEBUG_CHEAP?2:3, note:'Secondary portal',
-    parseHint:'URLs: domiporta.pl/... Snippets show basic listing info — price, area, location.' },
+    parseHint:'Basic listing cards: title, price, area, location.' },
   { id:'tabela',   name:'TabelaOfert.pl', site:'tabelaofert.pl', type:'portal', tier:'minor', maxIters:DEBUG_CHEAP?2:3, note:'Developer listings',
-    parseHint:'URLs: tabelaofert.pl/... Developer/new-build listings. May show estate name, developer, price from/to.' },
+    parseHint:'Developer new-build listings. Cards may show estate name, developer, price range.' },
   { id:'agencies', name:'Premium Agencies', site:null, type:'agencies', tier:'major', maxIters:DEBUG_CHEAP?3:5,
     note:'MetroHouse, Freedom, Homfi, Strzelczyk, RE/MAX, Hamilton May, Lions Estate, Partners Intl, Vilea, NuxEstate, Prestige RE',
     sites:['metrohouse.pl','freedom-nieruchomosci.pl','homfi.com','strzelczyk.pl','remax.pl','hamiltonmay.com','lionsestate.pl','partnersinternational.pl','vilea.pl','nuxestate.pl','prestige-real-estate.pl'],
-    parseHint:'Multiple agency websites. Each URL domain tells you the agency name. Listings are premium/exclusive — extract all details available from titles and snippets.' }
+    parseHint:'Multiple agency websites. Domain = agency name. Extract all listing details.' }
 ];
 /* DEBUG_CHEAP: only top 3 portals to stay within Vercel 60s limits */
 const PORTALS = DEBUG_CHEAP ? ALL_PORTALS.slice(0,3) : ALL_PORTALS;
@@ -1031,7 +1092,7 @@ async function apiCall(model,msgs,tools,maxTok,opts={},_retry=0){
   }
 }
 
-/* Build a portal-specific search prompt */
+/* Build a portal-specific search prompt — now uses direct URLs */
 function buildPortalPrompt(brief, portal){
   const loc=brief.location||'Warsaw';
   const pType=brief.propertyType||'house';
@@ -1109,10 +1170,13 @@ const PORTAL_TIME_LIMIT_MS = 120000;
 
 /* ── Extract clean data from API response blocks (client-side) ── */
 function extractSearchData(contentBlocks){
-  const results={queries:[],urls:[],texts:[],citations:[]};
+  const results={queries:[],urls:[],texts:[],citations:[],fetchedUrls:[]};
   for(const b of contentBlocks){
     if(b.type==='server_tool_use'&&b.name==='web_search'){
       results.queries.push(b.input?.query||'');
+    }
+    if(b.type==='server_tool_use'&&b.name==='web_fetch'){
+      results.fetchedUrls.push(b.input?.url||'');
     }
     if(b.type==='web_search_tool_result'&&Array.isArray(b.content)){
       for(const r of b.content){
@@ -1123,7 +1187,6 @@ function extractSearchData(contentBlocks){
     }
     if(b.type==='text'){
       results.texts.push(b.text||'');
-      /* Extract citations */
       if(b.citations&&Array.isArray(b.citations)){
         for(const c of b.citations){
           if(c.cited_text) results.citations.push({text:c.cited_text,url:c.url||'',title:c.title||''});
@@ -1136,38 +1199,69 @@ function extractSearchData(contentBlocks){
 
 async function searchPortal(brief, portal, logWrap){
   const t0=performance.now();
-  const prompt=buildPortalPrompt(brief, portal);
-  const msgs=[{role:'user',content:prompt}];
-  const tools=[{type:'web_search_20250305',name:'web_search'}];
   const queries=[];
   let timedOut=false;
   let allSearchData={queries:[],urls:[],texts:[],citations:[]};
 
-  /* ═══ STEP 1: Let the model search (force tool use) ═══ */
-  log(`<span style="color:rgba(250,248,244,.35)">Step 1: searching…</span>`,logWrap);
+  /* ═══ STEP 1: Fetch portal search pages directly ═══ */
+  const directURLs = portal.type==='agencies' ? [] : buildPortalURLs(brief, portal);
+  const tools=[
+    {type:'web_search_20250305',name:'web_search',max_uses:3},
+    {type:'web_fetch_20250910',name:'web_fetch',max_uses:directURLs.length+1}
+  ];
+
+  /* Build prompt: fetch these specific URLs + optionally search for more */
+  const loc=brief.location||'Warsaw';
+  const pType=brief.propertyType||'house';
+  const pPL=pType==='apartment'?'mieszkanie':'dom';
+
+  let fetchPrompt;
+  if(directURLs.length){
+    log(`<span style="color:rgba(250,248,244,.35)">Fetching ${portal.name} search pages…</span>`,logWrap);
+    directURLs.forEach(u=>log(`<span style="color:rgba(250,248,244,.2)">→ ${u.slice(0,80)}…</span>`,logWrap));
+    fetchPrompt=`You are a real estate data scraper. Fetch the following search results pages and extract ALL property listings shown on them.
+
+URLS TO FETCH:
+${directURLs.map((u,i)=>`${i+1}. ${u}`).join('\n')}
+
+For each page:
+1. Use web_fetch to load the page
+2. Extract every individual property listing shown (title, price, area, rooms, location, URL)
+3. If the page blocks fetching or returns an error, use web_search with "site:${portal.site} ${pPL} ${loc} sprzedaż" as fallback
+
+CLIENT BRIEF: ${pType} in ${loc}, budget ${brief.budgetMin||'?'}-${brief.budgetMax||'?'} PLN, area ${brief.areaMin||'?'}-${brief.areaMax||'?'} m².
+
+After fetching, list ALL individual listings you found. For each listing provide: name/title, location, price, area m², rooms, URL to the listing page on ${portal.name}.`;
+  } else {
+    /* Agencies — no direct URL, use web_search */
+    fetchPrompt=buildPortalPrompt(brief, portal);
+  }
+
+  const msgs=[{role:'user',content:fetchPrompt}];
   let searchIters=0;
-  const maxSearchIters=portal.maxIters||MAX_ITERS_PER_PORTAL;
-  while(searchIters++<maxSearchIters){
+  const maxIters=portal.maxIters||MAX_ITERS_PER_PORTAL;
+
+  while(searchIters++<maxIters){
     if(performance.now()-t0>PORTAL_TIME_LIMIT_MS){timedOut=true;break;}
-    const forceSearch = searchIters===1 ? {toolChoice:{type:'any'}} : {};
+    const force = searchIters===1 ? {toolChoice:{type:'any'}} : {};
     let data;
     try{
-      data=await apiCall(MODEL_SEARCH,msgs,tools,1536,forceSearch);
+      data=await apiCall(MODEL_SEARCH,msgs,tools,2048,force);
     }catch(err){
       if(err.message.includes('Timeout')){timedOut=true;break;}
       throw err;
     }
     const blockTypes=data.content.map(b=>b.type).join(', ');
-    console.log(`[${portal.name} search ${searchIters}] stop=${data.stop_reason} blocks=[${blockTypes}]`);
-    log(`<span style="color:rgba(250,248,244,.35)">[search ${searchIters}] stop=${data.stop_reason} blocks=[${blockTypes}]</span>`,logWrap);
+    console.log(`[${portal.name} iter ${searchIters}] stop=${data.stop_reason} blocks=[${blockTypes}]`);
+    log(`<span style="color:rgba(250,248,244,.35)">[iter ${searchIters}] stop=${data.stop_reason} blocks=[${blockTypes}]</span>`,logWrap);
 
     /* Extract data client-side */
     const sd=extractSearchData(data.content);
     sd.queries.forEach(q=>{
       queries.push(q);
-      allSearchData.queries.push(q);
-      log(`<strong>${portal.name}</strong> → <em>"${q.slice(0,70)}${q.length>70?'…':''}"</em>`,logWrap);
+      log(`<strong>${portal.name}</strong> 🔍 <em>"${q.slice(0,70)}"</em>`,logWrap);
     });
+    sd.fetchedUrls.forEach(u=>log(`<strong>${portal.name}</strong> 📄 fetched <em>${u.slice(0,60)}</em>`,logWrap));
     sd.urls.forEach(u=>allSearchData.urls.push(u));
     sd.texts.forEach(t=>allSearchData.texts.push(t));
     sd.citations.forEach(c=>allSearchData.citations.push(c));
@@ -1182,42 +1276,32 @@ async function searchPortal(brief, portal, logWrap){
       }
       continue;
     }
-
-    /* end_turn or max_tokens — search phase done */
+    /* Done fetching */
     break;
   }
 
   /* ═══ STEP 2: Build clean summary from extracted data ═══ */
   const uniqueUrls=[...new Map(allSearchData.urls.map(u=>[u.url,u])).values()];
-  const cleanSummary=[];
-  cleanSummary.push(`SEARCH RESULTS for ${portal.name} (${queries.length} queries):`);
-  cleanSummary.push('');
-  /* Add URLs found */
+  const cleanParts=[];
+  cleanParts.push(`SEARCH RESULTS for ${portal.name} (${queries.length} queries, ${uniqueUrls.length} page results):\n`);
   if(uniqueUrls.length){
-    cleanSummary.push(`PAGES FOUND (${uniqueUrls.length}):`);
-    uniqueUrls.forEach((u,i)=>{
-      cleanSummary.push(`${i+1}. ${u.title} — ${u.url}${u.age?' ('+u.age+')':''}`);
-    });
-    cleanSummary.push('');
+    cleanParts.push('PAGES FOUND:');
+    uniqueUrls.forEach((u,i)=>cleanParts.push(`${i+1}. ${u.title} — ${u.url}`));
+    cleanParts.push('');
   }
-  /* Add citations (actual content snippets) */
   if(allSearchData.citations.length){
-    cleanSummary.push(`CONTENT SNIPPETS (${allSearchData.citations.length}):`);
-    allSearchData.citations.forEach((c,i)=>{
-      cleanSummary.push(`[${i+1}] "${c.text}" — ${c.title} (${c.url})`);
-    });
-    cleanSummary.push('');
+    cleanParts.push(`CONTENT SNIPPETS (${allSearchData.citations.length}):`);
+    allSearchData.citations.forEach((c,i)=>cleanParts.push(`[${i+1}] "${c.text}" — ${c.title} (${c.url})`));
+    cleanParts.push('');
   }
-  /* Add model's text analysis */
   const modelText=allSearchData.texts.join('\n').trim();
   if(modelText){
-    cleanSummary.push('MODEL ANALYSIS:');
-    cleanSummary.push(modelText.slice(0,3000)); /* cap to avoid token explosion */
+    cleanParts.push('EXTRACTED DATA:');
+    cleanParts.push(modelText.slice(0,4000));
   }
-
-  const summaryText=cleanSummary.join('\n');
+  const summaryText=cleanParts.join('\n');
   console.log(`[${portal.name}] extracted: ${uniqueUrls.length} URLs, ${allSearchData.citations.length} citations, ${modelText.length} chars text`);
-  log(`<span style="color:rgba(250,248,244,.35)">Step 2: ${uniqueUrls.length} URLs, ${allSearchData.citations.length} snippets extracted</span>`,logWrap);
+  log(`<span style="color:rgba(250,248,244,.35)">${uniqueUrls.length} URLs, ${allSearchData.citations.length} snippets, ${modelText.length} chars</span>`,logWrap);
 
   if(!uniqueUrls.length&&!allSearchData.citations.length&&!modelText){
     const elapsed=performance.now()-t0;
@@ -1225,11 +1309,9 @@ async function searchPortal(brief, portal, logWrap){
   }
 
   /* ═══ STEP 3: Separate cheap call — parse clean data into JSON ═══ */
-  log(`<span style="color:rgba(250,248,244,.35)">Step 3: parsing ${uniqueUrls.length} URLs into JSON…</span>`,logWrap);
-  const loc=brief.location||'Warsaw';
-  const pType=brief.propertyType||'house';
+  log(`<span style="color:rgba(250,248,244,.35)">Parsing listings…</span>`,logWrap);
   const hint=portal.parseHint||'';
-  const parsePrompt=`You are a data extraction engine. Parse these web search results into a JSON array of property listings.
+  const parsePrompt=`You are a data extraction engine. Parse these web search/fetch results into a JSON array of property listings.
 
 PORTAL: ${portal.name}
 ${hint?'PARSING GUIDE: '+hint:''}
@@ -1237,21 +1319,14 @@ ${hint?'PARSING GUIDE: '+hint:''}
 ${summaryText}
 
 TASK: Extract every distinct property listing from the data above.
-- Each unique URL from ${portal.name} (${portal.site||'agency sites'}) that points to a listing page = one listing
-- Parse price, area, rooms, location from the title, snippet, and model analysis
-- Polish prices: "1 500 000 zł" = 1500000, "950 tys." = 950000, "1,2 mln" = 1200000
-- Area: "120 m²" = 120, "120m2" = 120
-- If a page URL is a search results page (not an individual listing), skip it
+- Each unique listing URL = one entry. Skip search/index pages.
+- Polish prices: "1 500 000 zł"=1500000, "950 tys."=950000, "1,2 mln"=1200000
+- Area: "120 m²"=120, "120m2"=120
 
-CLIENT BRIEF (for relevance): ${pType} in ${loc}, budget ${brief.budgetMin||'?'}-${brief.budgetMax||'?'} PLN, area ${brief.areaMin||'?'}-${brief.areaMax||'?'} m².
-
-OUTPUT FORMAT — JSON array, one object per listing:
+OUTPUT — JSON array:
 [{"name":"...","location":"...","price_total":NUMBER_OR_NULL,"price_sqm":NUMBER_OR_NULL,"area_sqm":NUMBER_OR_NULL,"land_sqm":NUMBER_OR_NULL,"rooms":NUMBER_OR_NULL,"portal":"${portal.name}","listing_status":"active","url":"...","highlights":[],"caveats":[]}]
 
-Rules:
-- Return [] if no individual listings found
-- Use null for unknown fields, not strings
-- Return ONLY the JSON array — no text before or after`;
+Return [] if no listings. Use null for unknowns. ONLY JSON, no text.`;
 
   let fd;
   try{
@@ -1263,8 +1338,8 @@ Rules:
   const txts=fd.content.filter(b=>b.type==='text');
   const raw=txts.length?txts.map(b=>b.text).join(''):'[]';
   const elapsed=performance.now()-t0;
-  console.log(`[${portal.name} parse] ${raw.slice(0,120)}`);
-  log(`<span style="color:rgba(250,248,244,.35)">[parse] ${raw.slice(0,80)}…</span>`,logWrap);
+  console.log(`[${portal.name} parse] ${raw.slice(0,150)}`);
+  log(`<span style="color:rgba(250,248,244,.35)">[parse result] ${raw.slice(0,80)}…</span>`,logWrap);
   return{raw,elapsed,queries,iters:searchIters,timedOut};
 }
 
